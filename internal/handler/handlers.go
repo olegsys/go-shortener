@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -36,7 +36,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := strings.TrimPrefix(r.URL.Path, "/")
 	if id == "" {
 		fmt.Println("Empty ID")
 		http.Error(w, "ID is required", http.StatusBadRequest)
