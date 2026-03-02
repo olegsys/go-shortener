@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -20,6 +20,7 @@ func GenerateID() string {
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)[:8]
 }
+
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil || len(body) == 0 {
@@ -35,7 +36,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		fmt.Println("Empty ID")
 		http.Error(w, "ID is required", http.StatusBadRequest)
