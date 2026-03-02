@@ -26,9 +26,9 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
-	longUrl := string(body)
+	longURL := string(body)
 	id := GenerateID()
-	h.Store.Urls[id] = longUrl
+	h.Store.Urls[id] = longURL
 	shortURL := fmt.Sprintf("http://localhost:8080/%s", id)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(shortURL))
