@@ -25,7 +25,7 @@ func NewShortenerService(storage URLStore, baseUrl string) *ShortenerService {
 func (s *ShortenerService) Shorten(longUrl string) string {
 	shortURL := GenerateID()
 	s.storage.Set(shortURL, longUrl)
-	return s.baseURL + shortURL
+	return s.baseURL + "/" + shortURL
 }
 
 func (s *ShortenerService) Resolve(shortURL string) (string, bool) {
