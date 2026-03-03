@@ -1,59 +1,58 @@
 package handler
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
-	"github.com/olegsys/go-shortener/internal/config"
-	"github.com/olegsys/go-shortener/internal/model"
+	"github.com/go-chi/chi/v5"
+	"github.com/olegsys/go-shortener/internal/service"
 )
 
 type Handler struct {
-	store *model.URLStore
-	cfg   *config.Config
+	shortener *service.ShortenerService
 }
 
-func NewHandler(store *model.URLStore, cfg *config.Config) *Handler {
-	return &Handler{store: store, cfg: cfg}
-}
-
-func GenerateID() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return base64.URLEncoding.EncodeToString(b)[:8]
+func NewHandler(shortener *service.ShortenerService) *Handler {
+	return &Handler{
+		shortener: shortener,
+	}
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil || len(body) == 0 {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusBadRequest)
 		return
 	}
-	longURL := string(body)
-	id := GenerateID()
-	h.store.Urls[id] = longURL
-	shortURL := fmt.Sprintf("%s%s", h.cfg.BaseUrl, id)
+	if r.Header.Get("Content-Type") != "text/plain" {
+		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	sourceURL := string(body)
+	if sourceURL == "" {
+		http.Error(w, "empty url", http.StatusBadRequest)
+		return
+	}
+
+	shortURL := h.shortener.Shorten(sourceURL)
+
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(shortURL))
 }
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/")
-	if id == "" {
-		fmt.Println("Empty ID")
-		http.Error(w, "ID is required", http.StatusBadRequest)
+	shortURL := chi.URLParam(r, "id")
+	longURL, exists := h.shortener.Resolve(shortURL)
+	if !exists {
+		http.Error(w, "not found", http.StatusBadRequest)
 		return
 	}
-	longURL, exist := h.store.Urls[id]
-	if !exist {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
 	w.Header().Set("Location", longURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }

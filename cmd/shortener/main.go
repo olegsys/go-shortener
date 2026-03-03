@@ -6,25 +6,25 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-
 	"github.com/olegsys/go-shortener/internal/config"
 	"github.com/olegsys/go-shortener/internal/handler"
-	"github.com/olegsys/go-shortener/internal/model"
+	"github.com/olegsys/go-shortener/internal/repository"
+	"github.com/olegsys/go-shortener/internal/service"
 )
 
 func main() {
-	store := model.NewStore()
 	cfg := config.LoadConfig()
-	h := handler.NewHandler(store, cfg)
+	storage := repository.NewMapStorage()
+	shortenerService := service.NewShortenerService(storage, cfg.BaseUrl)
+	urlHandler := handler.NewHandler(shortenerService)
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Post("/", h.Shorten)
-	r.Get("/{id}", h.Redirect)
+	router := chi.NewRouter()
+	router.Use(middleware.Logger)
+	router.Post("/", urlHandler.Shorten)
+	router.Get("/{id}", urlHandler.Redirect)
 
 	fmt.Println("Listen on:", cfg.ListenAddress)
-	err := http.ListenAndServe(cfg.ListenAddress, r)
+	err := http.ListenAndServe(cfg.ListenAddress, router)
 	if err != nil {
 		panic(err)
 	}
