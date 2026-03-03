@@ -8,11 +8,17 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/olegsys/go-shortener/internal/config"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type Handler struct {
-	Store *model.URLStore
+	store *model.URLStore
+	cfg   *config.Config
+}
+
+func NewHandler(store *model.URLStore, cfg *config.Config) *Handler {
+	return &Handler{store: store, cfg: cfg}
 }
 
 func GenerateID() string {
@@ -29,8 +35,8 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	}
 	longURL := string(body)
 	id := GenerateID()
-	h.Store.Urls[id] = longURL
-	shortURL := fmt.Sprintf("http://localhost:8080/%s", id)
+	h.store.Urls[id] = longURL
+	shortURL := fmt.Sprintf("%s%s", h.cfg.BaseUrl, id)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(shortURL))
 }
@@ -42,7 +48,7 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ID is required", http.StatusBadRequest)
 		return
 	}
-	longURL, exist := h.Store.Urls[id]
+	longURL, exist := h.store.Urls[id]
 	if !exist {
 		w.WriteHeader(http.StatusBadRequest)
 		return
