@@ -38,6 +38,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty url", http.StatusBadRequest)
 		return
 	}
+	// fmt.Println("Input URL:", sourceURL)
 
 	shortURL := h.shortener.Shorten(sourceURL)
 
