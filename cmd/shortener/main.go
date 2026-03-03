@@ -15,7 +15,7 @@ import (
 func main() {
 	cfg := config.LoadConfig()
 	storage := repository.NewMapStorage()
-	shortenerService := service.NewShortenerService(storage, cfg.BaseUrl)
+	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
 	urlHandler := handler.NewHandler(shortenerService)
 
 	router := chi.NewRouter()
