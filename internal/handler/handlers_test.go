@@ -71,13 +71,15 @@ func TestShorten(t *testing.T) {
 			w := httptest.NewRecorder()
 
 			router.ServeHTTP(w, r)
+			res := w.Result()
+			defer res.Body.Close()
 
-			assert.Equal(t, tt.expectedResponse.httpCode, w.Result().StatusCode)
+			assert.Equal(t, tt.expectedResponse.httpCode, res.StatusCode)
 			if tt.expectedResponse.checkBody {
-				assert.Regexp(t, regexp.MustCompile(`^http://localhost:8080/[^ /]{8}$`), w.Body.String())
+				assert.Regexp(t, regexp.MustCompile(`^http://localhost:8080/[^ /]{8}$`), res.StatusCode)
 			}
 			if tt.expectedResponse.contentType != "" {
-				assert.Equal(t, tt.expectedResponse.contentType, w.Header().Get("Content-Type"))
+				assert.Equal(t, tt.expectedResponse.contentType, res.Header.Get("Content-Type"))
 			}
 		})
 	}

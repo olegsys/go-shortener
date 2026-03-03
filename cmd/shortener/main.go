@@ -24,6 +24,7 @@ func main() {
 	router.Get("/{id}", urlHandler.Redirect)
 
 	fmt.Println("Listen on:", cfg.ListenAddress)
+	fmt.Println("Base URL:", cfg.BaseURL)
 	err := http.ListenAndServe(cfg.ListenAddress, router)
 	if err != nil {
 		panic(err)
