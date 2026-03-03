@@ -15,16 +15,16 @@ type ShortenerService struct {
 	baseURL string
 }
 
-func NewShortenerService(storage URLStore, baseUrl string) *ShortenerService {
+func NewShortenerService(storage URLStore, baseURL string) *ShortenerService {
 	return &ShortenerService{
 		storage: storage,
-		baseURL: baseUrl,
+		baseURL: baseURL,
 	}
 }
 
-func (s *ShortenerService) Shorten(longUrl string) string {
+func (s *ShortenerService) Shorten(longURL string) string {
 	shortURL := GenerateID()
-	s.storage.Set(shortURL, longUrl)
+	s.storage.Set(shortURL, longURL)
 	return s.baseURL + "/" + shortURL
 }
 
