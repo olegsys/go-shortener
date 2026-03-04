@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -15,7 +16,7 @@ import (
 
 func TestShorten(t *testing.T) {
 	storage := repository.NewMapStorage()
-	svc := service.NewShortenerService(storage, "http://localhost:8080")
+	svc := service.NewShortenerService(storage, "http://localhost:8080/")
 	h := NewHandler(svc)
 
 	router := chi.NewRouter()
@@ -73,10 +74,11 @@ func TestShorten(t *testing.T) {
 			router.ServeHTTP(w, r)
 			res := w.Result()
 			defer res.Body.Close()
+			shortURL, _ := io.ReadAll(res.Body)
 
 			assert.Equal(t, tt.expectedResponse.httpCode, res.StatusCode)
 			if tt.expectedResponse.checkBody {
-				assert.Regexp(t, regexp.MustCompile(`^http://localhost:8080/[^ /]{8}$`), res.StatusCode)
+				assert.Regexp(t, regexp.MustCompile(`^http://localhost:8080/[^ /]{8}$`), string(shortURL))
 			}
 			if tt.expectedResponse.contentType != "" {
 				assert.Equal(t, tt.expectedResponse.contentType, res.Header.Get("Content-Type"))
