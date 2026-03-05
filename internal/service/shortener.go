@@ -33,7 +33,7 @@ func (s *ShortenerService) Resolve(shortURL string) (string, bool) {
 	return s.storage.Get(shortURL)
 }
 
-func GenerateID() string {
+func generateID() string {
 	b := make([]byte, 8)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)[:8]
