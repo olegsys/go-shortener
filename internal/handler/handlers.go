@@ -6,14 +6,18 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/olegsys/go-shortener/internal/service"
 )
 
-type Handler struct {
-	shortener *service.ShortenerService
+type Shortener interface {
+	Shorten(longURL string) string
+	Resolve(shortURL string) (string, bool)
 }
 
-func NewHandler(shortener *service.ShortenerService) *Handler {
+type Handler struct {
+	shortener Shortener
+}
+
+func NewHandler(shortener Shortener) *Handler {
 	return &Handler{
 		shortener: shortener,
 	}
