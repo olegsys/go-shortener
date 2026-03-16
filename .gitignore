@@ -23,3 +23,5 @@ vendor/
 .vscode
 main
 localtest.sh
+/localtest.ps1
+/localtest.ps1
