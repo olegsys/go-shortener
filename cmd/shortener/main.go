@@ -29,6 +29,7 @@ func main() {
 	router := chi.NewRouter()
 	router.Use(middleware.Logging(logger))
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
+	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
 	router.Post("/api/shorten", urlHandler.ShortenJson)
 	router.Get("/{id}", urlHandler.Redirect)
