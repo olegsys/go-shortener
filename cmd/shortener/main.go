@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/olegsys/go-shortener/internal/config"
 	"github.com/olegsys/go-shortener/internal/handler"
 	"github.com/olegsys/go-shortener/internal/middleware"
@@ -27,6 +28,7 @@ func main() {
 
 	router := chi.NewRouter()
 	router.Use(middleware.Logging(logger))
+	router.Use(chimw.Compress(5, "application/json", "text/html"))
 	router.Post("/", urlHandler.Shorten)
 	router.Post("/api/shorten", urlHandler.ShortenJson)
 	router.Get("/{id}", urlHandler.Redirect)
