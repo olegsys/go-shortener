@@ -33,7 +33,7 @@ func main() {
 
 	err = storage.LoadFromFile(cfg.StorageFile)
 	if err != nil {
-		logger.Error("Error loading data from file %v",
+		logger.Error("Error loading data from file",
 			zap.Error(err),
 		)
 	}
@@ -55,7 +55,7 @@ func main() {
 			zap.String("File storage path:", cfg.StorageFile),
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Server failed: %v",
+			logger.Fatal("Server listen failed",
 				zap.Error(err),
 			)
 		}
@@ -66,11 +66,16 @@ func main() {
 	<-stop
 	logger.Info("Shutdown signal received")
 
-	storage.SaveToFile(cfg.StorageFile)
+	if err := storage.SaveToFile(cfg.StorageFile); err != nil {
+		logger.Error("File with data not saved",
+			zap.String("Filepath", cfg.StorageFile),
+			zap.Error(err),
+		)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("Graceful shutdown failed: %v",
+		logger.Error("Graceful shutdown failed",
 			zap.Error(err),
 		)
 		srv.Close()
