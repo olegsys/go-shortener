@@ -28,6 +28,7 @@ func main() {
 	router := chi.NewRouter()
 	router.Use(middleware.Logging(logger))
 	router.Post("/", urlHandler.Shorten)
+	router.Post("/api/shorten", urlHandler.ShortenJson)
 	router.Get("/{id}", urlHandler.Redirect)
 
 	fmt.Println("Listen on:", cfg.ListenAddress)
