@@ -13,7 +13,12 @@ type Shortener interface {
 	Shorten(longURL string) string
 	Resolve(shortURL string) (string, bool)
 }
-
+type request struct {
+	URL string `json:"url"`
+}
+type resp struct {
+	Result string `json:"result"`
+}
 type Handler struct {
 	shortener Shortener
 }
@@ -25,10 +30,6 @@ func NewHandler(shortener Shortener) *Handler {
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusBadRequest)
-		return
-	}
 	if r.Header.Get("Content-Type") != "text/plain" {
 		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
 		return
@@ -54,19 +55,9 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusBadRequest)
-		return
-	}
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
-	}
-	type request struct {
-		URL string `json:"url"`
-	}
-	type response struct {
-		Result string `json:"result"`
 	}
 	var req request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -77,11 +68,12 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty url", http.StatusBadRequest)
 	}
 	shortURL := h.shortener.Shorten(req.URL)
-	res := response{Result: shortURL}
+	res := resp{Result: shortURL}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 }
 
