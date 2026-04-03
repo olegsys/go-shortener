@@ -2,7 +2,12 @@ module github.com/olegsys/go-shortener
 
 go 1.24.13
 
-require github.com/go-chi/chi/v5 v5.2.5
+require (
+	github.com/go-chi/chi/v5 v5.2.5
+	go.uber.org/zap v1.27.1
+)
+
+require go.uber.org/multierr v1.11.0 // indirect
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
