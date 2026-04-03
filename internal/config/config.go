@@ -1,6 +1,9 @@
 package config
 
-import "flag"
+import (
+	"flag"
+	"os"
+)
 
 type Config struct {
 	ListenAddress string
@@ -12,5 +15,11 @@ func LoadConfig() *Config {
 	flag.StringVar(&cfg.ListenAddress, "a", ":8080", "address")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080/", "base url")
 	flag.Parse()
+	if val := os.Getenv("SERVER_ADDRESS"); val != "" {
+		cfg.ListenAddress = val
+	}
+	if val := os.Getenv("BASE_URL"); val != "" {
+		cfg.BaseURL = val
+	}
 	return cfg
 }
