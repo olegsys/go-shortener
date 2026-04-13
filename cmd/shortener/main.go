@@ -41,6 +41,7 @@ func main() {
 	storage := repository.NewMapStorage()
 	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
 	urlHandler := handler.NewHandler(shortenerService)
+	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
 
 	err = storage.LoadFromFile(cfg.StorageFile)
@@ -50,17 +51,13 @@ func main() {
 		)
 	}
 
-	if dbStorage != nil {
-		pingHandler := handler.NewPingHandler(dbStorage)
-		router.Get("/ping", pingHandler.Ping)
-	}
-
 	router.Use(middleware.Logging(logger))
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
 	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
 	router.Post("/api/shorten", urlHandler.ShortenJson)
 	router.Get("/{id}", urlHandler.Redirect)
+	router.Get("/ping", pingHandler.Ping)
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddress,
