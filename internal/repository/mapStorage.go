@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"sync"
@@ -24,7 +25,7 @@ func NewMapStorage() *MapStorage {
 	}
 }
 
-func (m *MapStorage) Set(shortURL, longURL string) {
+func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	id := uuid.New()
@@ -33,13 +34,14 @@ func (m *MapStorage) Set(shortURL, longURL string) {
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
 	}
+	return nil
 }
 
-func (m *MapStorage) Get(s string) (string, bool) {
+func (m *MapStorage) Get(ctx context.Context, s string) (string, bool, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	record, exist := m.data[s]
-	return record.OriginalURL, exist
+	return record.OriginalURL, exist, nil
 }
 
 func (m *MapStorage) LoadFromFile(filePath string) error {

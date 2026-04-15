@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -70,7 +71,8 @@ func TestHandler_Shorten(t *testing.T) {
 			router.ServeHTTP(w, r)
 			res := w.Result()
 			defer res.Body.Close()
-			shortURL, _ := io.ReadAll(res.Body)
+			shortURL, err := io.ReadAll(res.Body)
+			assert.NoError(t, err)
 
 			assert.Equal(t, tt.expectedResponse.httpCode, res.StatusCode)
 			if tt.expectedResponse.checkBody {
@@ -91,7 +93,8 @@ func TestHandler_Redirect(t *testing.T) {
 	}{"http://localhost:8080/", "abc", "https://yandex.ru/test"}
 
 	storage := repository.NewMapStorage()
-	storage.Set(mockData.id, mockData.longURL)
+	err := storage.Set(context.Background(), mockData.id, mockData.longURL)
+	assert.NoError(t, err)
 	svc := service.NewShortenerService(storage, mockData.baseURL)
 	h := NewHandler(svc)
 
@@ -198,7 +201,8 @@ func TestHandler_ShortenJson(t *testing.T) {
 			router.ServeHTTP(w, r)
 			res := w.Result()
 			defer res.Body.Close()
-			shortURL, _ := io.ReadAll(res.Body)
+			shortURL, err := io.ReadAll(res.Body)
+			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedResponse.httpCode, res.StatusCode)
 			if tt.expectedResponse.checkBody {
 				assert.Regexp(t, regexp.MustCompile(`\{"result":"http://localhost:8080/([^"]{8})"\}`), string(shortURL))

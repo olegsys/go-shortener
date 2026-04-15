@@ -20,6 +20,11 @@ func NewPingHandler(pinger Pinger) *PingHandler {
 }
 
 func (h *PingHandler) Ping(w http.ResponseWriter, r *http.Request) {
+	if h.pinger == nil {
+		http.Error(w, "database unavailable", http.StatusInternalServerError)
+		return
+	}
+
 	ctx := r.Context()
 	if err := h.pinger.Ping(ctx); err != nil {
 		http.Error(w, "database unavailable", http.StatusInternalServerError)
