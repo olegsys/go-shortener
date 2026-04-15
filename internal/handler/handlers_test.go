@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/olegsys/go-shortener/internal/model"
 	"github.com/olegsys/go-shortener/internal/repository"
 	"github.com/olegsys/go-shortener/internal/service"
 	"github.com/stretchr/testify/assert"
@@ -209,6 +211,75 @@ func TestHandler_ShortenJson(t *testing.T) {
 			}
 			if tt.expectedResponse.contentType != "" {
 				assert.Equal(t, tt.expectedResponse.contentType, res.Header.Get("Content-Type"))
+			}
+		})
+	}
+}
+
+func TestHandler_ShortenBatchJson(t *testing.T) {
+	storage := repository.NewMapStorage()
+	svc := service.NewShortenerService(storage, "http://localhost:8080/")
+	h := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Post("/api/shorten/batch", h.ShortenBatchJson)
+
+	tests := []struct {
+		name        string
+		method      string
+		inputBody   string
+		contentType string
+		wantStatus  int
+		wantCount   int
+	}{
+		{
+			name:        "valid batch request",
+			method:      http.MethodPost,
+			inputBody:   `[{"correlation_id":"1","original_url":"https://practicum.yandex.ru"},{"correlation_id":"2","original_url":"https://ya.ru"}]`,
+			contentType: "application/json",
+			wantStatus:  http.StatusCreated,
+			wantCount:   2,
+		},
+		{
+			name:        "empty batch request",
+			method:      http.MethodPost,
+			inputBody:   `[]`,
+			contentType: "application/json",
+			wantStatus:  http.StatusBadRequest,
+			wantCount:   0,
+		},
+		{
+			name:        "invalid content type",
+			method:      http.MethodPost,
+			inputBody:   `[{"correlation_id":"1","original_url":"https://practicum.yandex.ru"}]`,
+			contentType: "text/plain",
+			wantStatus:  http.StatusBadRequest,
+			wantCount:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(tt.method, "http://localhost:8080/api/shorten/batch", strings.NewReader(tt.inputBody))
+			r.Header.Set("Content-Type", tt.contentType)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, r)
+			res := w.Result()
+			defer res.Body.Close()
+
+			assert.Equal(t, tt.wantStatus, res.StatusCode)
+
+			if tt.wantStatus == http.StatusCreated {
+				var batchResp []model.ShortenBatchResult
+				err := json.NewDecoder(res.Body).Decode(&batchResp)
+				assert.NoError(t, err)
+				assert.Len(t, batchResp, tt.wantCount)
+				for _, item := range batchResp {
+					assert.NotEmpty(t, item.CorrelationID)
+					assert.Regexp(t, regexp.MustCompile(`^http://localhost:8080/[^ /]{8}$`), item.ShortURL)
+				}
+				assert.Equal(t, "application/json", res.Header.Get("Content-Type"))
 			}
 		})
 	}

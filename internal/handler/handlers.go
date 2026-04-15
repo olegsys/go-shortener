@@ -7,10 +7,12 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type Shortener interface {
 	Shorten(ctx context.Context, longURL string) (string, error)
+	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
 	Resolve(ctx context.Context, shortURL string) (string, bool, error)
 }
 type request struct {
@@ -82,6 +84,42 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var req []model.ShortenBatchItem
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request json", http.StatusBadRequest)
+		return
+	}
+	if len(req) == 0 {
+		http.Error(w, "empty batch", http.StatusBadRequest)
+		return
+	}
+	for _, item := range req {
+		if item.CorrelationID == "" || item.OriginalURL == "" {
+			http.Error(w, "invalid batch item", http.StatusBadRequest)
+			return
+		}
+	}
+
+	batchResult, err := h.shortener.ShortenBatch(r.Context(), req)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(batchResult); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
