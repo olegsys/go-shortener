@@ -48,18 +48,20 @@ func (p *PostgresStorage) Close(ctx context.Context) error {
 	return p.db.Close()
 }
 
-func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) error {
+func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
 	query := `
 		INSERT INTO short_urls (short_url, original_url)
 		VALUES ($1, $2)
-		ON CONFLICT (short_url) DO UPDATE
-		SET original_url = EXCLUDED.original_url;
+		ON CONFLICT (original_url) DO UPDATE
+		SET original_url = EXCLUDED.original_url
+		RETURNING short_url;
 	`
 
-	if _, err := p.db.ExecContext(ctx, query, shortURL, longURL); err != nil {
-		return fmt.Errorf("insert short url: %w", err)
+	var storedShortURL string
+	if err := p.db.QueryRowContext(ctx, query, shortURL, longURL).Scan(&storedShortURL); err != nil {
+		return "", false, fmt.Errorf("insert short url: %w", err)
 	}
-	return nil
+	return storedShortURL, storedShortURL == shortURL, nil
 }
 
 func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) error {
@@ -76,7 +78,7 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) e
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO short_urls (short_url, original_url)
 		VALUES ($1, $2)
-		ON CONFLICT (short_url) DO UPDATE
+		ON CONFLICT (original_url) DO UPDATE
 		SET original_url = EXCLUDED.original_url;
 	`)
 	if err != nil {

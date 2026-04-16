@@ -26,16 +26,23 @@ func NewMapStorage() *MapStorage {
 	}
 }
 
-func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) error {
+func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	for existingShortURL, record := range m.data {
+		if record.OriginalURL == longURL {
+			return existingShortURL, false, nil
+		}
+	}
+
 	id := uuid.New()
 	m.data[shortURL] = Record{
 		UUID:        id.String(),
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
 	}
-	return nil
+	return shortURL, true, nil
 }
 
 func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) error {

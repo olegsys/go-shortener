@@ -11,7 +11,7 @@ import (
 )
 
 type URLStore interface {
-	Set(ctx context.Context, shortURL, longURL string) error
+	Set(ctx context.Context, shortURL, longURL string) (string, bool, error)
 	SetBatch(ctx context.Context, pairs []model.URLPair) error
 	Get(ctx context.Context, s string) (string, bool, error)
 }
@@ -28,17 +28,18 @@ func NewShortenerService(storage URLStore, baseURL string) *ShortenerService {
 	}
 }
 
-func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string, error) {
+func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string, bool, error) {
 	shortURL, err := generateID()
 	if err != nil {
-		return "", fmt.Errorf("generate short id: %w", err)
+		return "", false, fmt.Errorf("generate short id: %w", err)
 	}
 
-	if err := s.storage.Set(ctx, shortURL, longURL); err != nil {
-		return "", fmt.Errorf("save short url: %w", err)
+	storedShortURL, created, err := s.storage.Set(ctx, shortURL, longURL)
+	if err != nil {
+		return "", false, fmt.Errorf("save short url: %w", err)
 	}
 
-	return strings.TrimSuffix(s.baseURL, "/") + "/" + shortURL, nil
+	return strings.TrimSuffix(s.baseURL, "/") + "/" + storedShortURL, !created, nil
 }
 
 func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error) {
