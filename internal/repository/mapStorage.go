@@ -16,13 +16,15 @@ type Record struct {
 	OriginalURL string `json:"original_url"`
 }
 type MapStorage struct {
-	data  map[string]Record
-	mutex sync.RWMutex
+	data     map[string]Record
+	urlIndex map[string]string
+	mutex    sync.RWMutex
 }
 
 func NewMapStorage() *MapStorage {
 	return &MapStorage{
-		data: make(map[string]Record),
+		data:     make(map[string]Record),
+		urlIndex: make(map[string]string),
 	}
 }
 
@@ -30,10 +32,8 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string,
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	for existingShortURL, record := range m.data {
-		if record.OriginalURL == longURL {
-			return existingShortURL, false, nil
-		}
+	if existingShortURL, ok := m.urlIndex[longURL]; ok {
+		return existingShortURL, false, nil
 	}
 
 	id := uuid.New()
@@ -42,6 +42,8 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string,
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
 	}
+	m.urlIndex[longURL] = shortURL
+
 	return shortURL, true, nil
 }
 
@@ -87,6 +89,7 @@ func (m *MapStorage) LoadFromFile(filePath string) error {
 	defer m.mutex.Unlock()
 	for _, rec := range records {
 		m.data[rec.ShortURL] = rec
+		m.urlIndex[rec.OriginalURL] = rec.ShortURL
 	}
 	return nil
 }
