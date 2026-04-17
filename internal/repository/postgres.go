@@ -64,14 +64,14 @@ func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (st
 	return storedShortURL, storedShortURL == shortURL, nil
 }
 
-func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) error {
+func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
 	if len(pairs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin batch transaction: %w", err)
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -79,24 +79,31 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) e
 		INSERT INTO short_urls (short_url, original_url)
 		VALUES ($1, $2)
 		ON CONFLICT (original_url) DO UPDATE
-		SET original_url = EXCLUDED.original_url;
+		SET original_url = EXCLUDED.original_url
+		RETURNING short_url;
 	`)
 	if err != nil {
-		return fmt.Errorf("prepare batch insert: %w", err)
+		return nil, err
 	}
 	defer stmt.Close()
 
-	for _, pair := range pairs {
-		if _, err := stmt.ExecContext(ctx, pair.ShortURL, pair.LongURL); err != nil {
-			return fmt.Errorf("insert batch short urls: %w", err)
+	results := make([]model.URLPair, len(pairs))
+	for i, pair := range pairs {
+		var actualShortID string
+		if err := stmt.QueryRowContext(ctx, pair.ShortURL, pair.LongURL).Scan(&actualShortID); err != nil {
+			return nil, err
+		}
+		results[i] = model.URLPair{
+			ShortURL: actualShortID,
+			LongURL:  pair.LongURL,
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit batch transaction: %w", err)
+		return nil, err
 	}
 
-	return nil
+	return results, nil
 }
 
 func (p *PostgresStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {

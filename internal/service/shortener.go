@@ -12,7 +12,7 @@ import (
 
 type URLStore interface {
 	Set(ctx context.Context, shortURL, longURL string) (string, bool, error)
-	SetBatch(ctx context.Context, pairs []model.URLPair) error
+	SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error)
 	Get(ctx context.Context, s string) (string, bool, error)
 }
 
@@ -43,23 +43,26 @@ func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string,
 }
 
 func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error) {
-	pairs := make([]model.URLPair, 0, len(items))
-	results := make([]model.ShortenBatchResult, 0, len(items))
-
-	for _, item := range items {
+	pairs := make([]model.URLPair, len(items))
+	for i, item := range items {
 		shortID, err := generateID()
 		if err != nil {
-			return nil, fmt.Errorf("generate batch short id: %w", err)
+			return nil, err
 		}
-		pairs = append(pairs, model.URLPair{ShortURL: shortID, LongURL: item.OriginalURL})
-		results = append(results, model.ShortenBatchResult{
-			CorrelationID: item.CorrelationID,
-			ShortURL:      strings.TrimSuffix(s.baseURL, "/") + "/" + shortID,
-		})
+		pairs[i] = model.URLPair{ShortURL: shortID, LongURL: item.OriginalURL}
 	}
 
-	if err := s.storage.SetBatch(ctx, pairs); err != nil {
-		return nil, fmt.Errorf("save batch short urls: %w", err)
+	persistedPairs, err := s.storage.SetBatch(ctx, pairs)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]model.ShortenBatchResult, len(items))
+	for i, item := range items {
+		results[i] = model.ShortenBatchResult{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      strings.TrimSuffix(s.baseURL, "/") + "/" + persistedPairs[i].ShortURL,
+		}
 	}
 
 	return results, nil
