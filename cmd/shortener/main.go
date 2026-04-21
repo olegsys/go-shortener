@@ -63,6 +63,7 @@ func main() {
 	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
 	router.Post("/api/shorten", urlHandler.ShortenJson)
+	router.Post("/api/shorten/batch", urlHandler.ShortenBatchJson)
 	router.Get("/{id}", urlHandler.Redirect)
 	router.Get("/ping", pingHandler.Ping)
 

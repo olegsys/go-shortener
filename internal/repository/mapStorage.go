@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type Record struct {
@@ -34,6 +35,22 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) error {
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
 	}
+	return nil
+}
+
+func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for _, pair := range pairs {
+		id := uuid.New()
+		m.data[pair.ShortURL] = Record{
+			UUID:        id.String(),
+			ShortURL:    pair.ShortURL,
+			OriginalURL: pair.LongURL,
+		}
+	}
+
 	return nil
 }
 

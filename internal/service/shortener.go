@@ -6,10 +6,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+
+	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type URLStore interface {
 	Set(ctx context.Context, shortURL, longURL string) error
+	SetBatch(ctx context.Context, pairs []model.URLPair) error
 	Get(ctx context.Context, s string) (string, bool, error)
 }
 
@@ -36,6 +39,29 @@ func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string,
 	}
 
 	return strings.TrimSuffix(s.baseURL, "/") + "/" + shortURL, nil
+}
+
+func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error) {
+	pairs := make([]model.URLPair, 0, len(items))
+	results := make([]model.ShortenBatchResult, 0, len(items))
+
+	for _, item := range items {
+		shortID, err := generateID()
+		if err != nil {
+			return nil, fmt.Errorf("generate batch short id: %w", err)
+		}
+		pairs = append(pairs, model.URLPair{ShortURL: shortID, LongURL: item.OriginalURL})
+		results = append(results, model.ShortenBatchResult{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      strings.TrimSuffix(s.baseURL, "/") + "/" + shortID,
+		})
+	}
+
+	if err := s.storage.SetBatch(ctx, pairs); err != nil {
+		return nil, fmt.Errorf("save batch short urls: %w", err)
+	}
+
+	return results, nil
 }
 
 func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string, bool, error) {

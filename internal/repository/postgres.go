@@ -11,6 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type PostgresStorage struct {
@@ -58,6 +59,41 @@ func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) err
 	if _, err := p.db.ExecContext(ctx, query, shortURL, longURL); err != nil {
 		return fmt.Errorf("insert short url: %w", err)
 	}
+	return nil
+}
+
+func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) error {
+	if len(pairs) == 0 {
+		return nil
+	}
+
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin batch transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO short_urls (short_url, original_url)
+		VALUES ($1, $2)
+		ON CONFLICT (short_url) DO UPDATE
+		SET original_url = EXCLUDED.original_url;
+	`)
+	if err != nil {
+		return fmt.Errorf("prepare batch insert: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, pair := range pairs {
+		if _, err := stmt.ExecContext(ctx, pair.ShortURL, pair.LongURL); err != nil {
+			return fmt.Errorf("insert batch short urls: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit batch transaction: %w", err)
+	}
+
 	return nil
 }
 
