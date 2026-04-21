@@ -2,34 +2,109 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 type PostgresStorage struct {
-	conn *pgx.Conn
+	db *sql.DB
 }
 
 func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, dsn)
+	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("unable to connect to database: %w", err)
+		return nil, fmt.Errorf("unable to parse database config: %w", err)
 	}
 
-	if err := conn.Ping(ctx); err != nil {
-		conn.Close(ctx)
+	if err := runMigrations(dsn); err != nil {
+		return nil, fmt.Errorf("unable to apply migrations: %w", err)
+	}
+
+	db := stdlib.OpenDB(*cfg)
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("unable to ping database: %w", err)
 	}
 
-	return &PostgresStorage{conn: conn}, nil
+	return &PostgresStorage{db: db}, nil
 }
 
 func (p *PostgresStorage) Ping(ctx context.Context) error {
-	return p.conn.Ping(ctx)
+	return p.db.PingContext(ctx)
 }
 
 func (p *PostgresStorage) Close(ctx context.Context) error {
-	return p.conn.Close(ctx)
+	_ = ctx
+	return p.db.Close()
+}
+
+func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) error {
+	query := `
+		INSERT INTO short_urls (short_url, original_url)
+		VALUES ($1, $2)
+		ON CONFLICT (short_url) DO UPDATE
+		SET original_url = EXCLUDED.original_url;
+	`
+
+	if _, err := p.db.ExecContext(ctx, query, shortURL, longURL); err != nil {
+		return fmt.Errorf("insert short url: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {
+	query := `SELECT original_url FROM short_urls WHERE short_url = $1`
+
+	var originalURL string
+	err := p.db.QueryRowContext(ctx, query, shortURL).Scan(&originalURL)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("select original url: %w", err)
+	}
+
+	return originalURL, true, nil
+}
+
+func runMigrations(dsn string) error {
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return fmt.Errorf("parse migration database config: %w", err)
+	}
+
+	migrationDB := stdlib.OpenDB(*cfg)
+	defer migrationDB.Close()
+
+	if err := migrationDB.Ping(); err != nil {
+		return fmt.Errorf("ping migration database: %w", err)
+	}
+
+	driver, err := postgres.WithInstance(migrationDB, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("create postgres migration driver: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance("file://migrations", "postgres", driver)
+	if err != nil {
+		return fmt.Errorf("create migrate instance: %w", err)
+	}
+	defer func() {
+		_, _ = m.Close()
+	}()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("apply migrations: %w", err)
+	}
+
+	return nil
 }

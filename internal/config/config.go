@@ -16,7 +16,7 @@ func LoadConfig() *Config {
 	cfg := &Config{}
 	flag.StringVar(&cfg.ListenAddress, "a", ":8080", "address")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080/", "base url")
-	flag.StringVar(&cfg.StorageFile, "f", "storage.json", "storage file")
+	flag.StringVar(&cfg.StorageFile, "f", "", "storage file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database dsn")
 	flag.Parse()
 	if val := os.Getenv("SERVER_ADDRESS"); val != "" {

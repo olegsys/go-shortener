@@ -27,6 +27,9 @@ func main() {
 	defer logger.Sync()
 
 	var dbStorage *repository.PostgresStorage
+	var mapStorage *repository.MapStorage
+	var storage service.URLStore
+
 	if cfg.DatabaseDSN != "" {
 		dbStorage, err = repository.NewPostgresStorage(cfg.DatabaseDSN)
 		if err != nil {
@@ -34,22 +37,26 @@ func main() {
 				zap.Error(err),
 			)
 		}
-		defer dbStorage.Close(context.Background())
 		logger.Info("Connected to PostgreSQL database")
+		storage = dbStorage
+	} else if cfg.StorageFile != "" {
+		mapStorage = repository.NewMapStorage()
+		if err := mapStorage.LoadFromFile(cfg.StorageFile); err != nil {
+			logger.Error("Error loading data from file",
+				zap.Error(err),
+			)
+		}
+		storage = mapStorage
+		logger.Info("Using file storage")
+	} else {
+		storage = repository.NewMapStorage()
+		logger.Info("Using in-memory storage")
 	}
 
-	storage := repository.NewMapStorage()
 	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
 	urlHandler := handler.NewHandler(shortenerService)
 	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
-
-	err = storage.LoadFromFile(cfg.StorageFile)
-	if err != nil {
-		logger.Error("Error loading data from file",
-			zap.Error(err),
-		)
-	}
 
 	router.Use(middleware.Logging(logger))
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
@@ -67,7 +74,6 @@ func main() {
 		logger.Info("Server startup params",
 			zap.String("Listen on:", cfg.ListenAddress),
 			zap.String("Base URL:", cfg.BaseURL),
-			zap.String("File storage path:", cfg.StorageFile),
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("Server listen failed",
@@ -84,11 +90,13 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := storage.SaveToFile(cfg.StorageFile); err != nil {
-		logger.Error("File with data not saved",
-			zap.String("Filepath", cfg.StorageFile),
-			zap.Error(err),
-		)
+	if mapStorage != nil {
+		if err := mapStorage.SaveToFile(cfg.StorageFile); err != nil {
+			logger.Error("File with data not saved",
+				zap.String("Filepath", cfg.StorageFile),
+				zap.Error(err),
+			)
+		}
 	}
 	if dbStorage != nil {
 		if err := dbStorage.Close(ctx); err != nil {
