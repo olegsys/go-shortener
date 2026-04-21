@@ -26,9 +26,22 @@ func main() {
 	}
 	defer logger.Sync()
 
+	var dbStorage *repository.PostgresStorage
+	if cfg.DatabaseDSN != "" {
+		dbStorage, err = repository.NewPostgresStorage(cfg.DatabaseDSN)
+		if err != nil {
+			logger.Fatal("Failed to connect to database",
+				zap.Error(err),
+			)
+		}
+		defer dbStorage.Close(context.Background())
+		logger.Info("Connected to PostgreSQL database")
+	}
+
 	storage := repository.NewMapStorage()
 	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
 	urlHandler := handler.NewHandler(shortenerService)
+	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
 
 	err = storage.LoadFromFile(cfg.StorageFile)
@@ -37,12 +50,14 @@ func main() {
 			zap.Error(err),
 		)
 	}
+
 	router.Use(middleware.Logging(logger))
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
 	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
 	router.Post("/api/shorten", urlHandler.ShortenJson)
 	router.Get("/{id}", urlHandler.Redirect)
+	router.Get("/ping", pingHandler.Ping)
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddress,
@@ -66,14 +81,22 @@ func main() {
 	<-stop
 	logger.Info("Shutdown signal received")
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	if err := storage.SaveToFile(cfg.StorageFile); err != nil {
 		logger.Error("File with data not saved",
 			zap.String("Filepath", cfg.StorageFile),
 			zap.Error(err),
 		)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	if dbStorage != nil {
+		if err := dbStorage.Close(ctx); err != nil {
+			logger.Error("Database close failed",
+				zap.Error(err),
+			)
+		}
+	}
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Graceful shutdown failed",
 			zap.Error(err),
