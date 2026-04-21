@@ -63,6 +63,17 @@ func TestHandler_Shorten(t *testing.T) {
 				checkBody:   false,
 			},
 		},
+		{
+			name:        "duplicate url returns conflict",
+			method:      http.MethodPost,
+			inputBody:   "https://yandex.ru",
+			contentType: "text/plain",
+			expectedResponse: response{
+				httpCode:    http.StatusConflict,
+				contentType: "text/plain",
+				checkBody:   true,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,7 +106,7 @@ func TestHandler_Redirect(t *testing.T) {
 	}{"http://localhost:8080/", "abc", "https://yandex.ru/test"}
 
 	storage := repository.NewMapStorage()
-	err := storage.Set(context.Background(), mockData.id, mockData.longURL)
+	_, _, err := storage.Set(context.Background(), mockData.id, mockData.longURL)
 	assert.NoError(t, err)
 	svc := service.NewShortenerService(storage, mockData.baseURL)
 	h := NewHandler(svc)
@@ -194,6 +205,17 @@ func TestHandler_ShortenJson(t *testing.T) {
 				checkBody:   false,
 			},
 		},
+		{
+			name:        "duplicate url returns conflict",
+			method:      http.MethodPost,
+			inputBody:   `{"url":"https://practicum.yandex.ru"}`,
+			contentType: "application/json",
+			expectedResponse: response{
+				httpCode:    http.StatusConflict,
+				contentType: "application/json",
+				checkBody:   true,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -283,4 +305,62 @@ func TestHandler_ShortenBatchJson(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandler_Shorten_DuplicateReturnsExistingURL(t *testing.T) {
+	storage := repository.NewMapStorage()
+	svc := service.NewShortenerService(storage, "http://localhost:8080/")
+	h := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Post("/", h.Shorten)
+
+	firstReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/", strings.NewReader("https://example.com"))
+	firstReq.Header.Set("Content-Type", "text/plain")
+	firstResp := httptest.NewRecorder()
+	router.ServeHTTP(firstResp, firstReq)
+	assert.Equal(t, http.StatusCreated, firstResp.Code)
+
+	firstBody, err := io.ReadAll(firstResp.Result().Body)
+	assert.NoError(t, err)
+
+	secondReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/", strings.NewReader("https://example.com"))
+	secondReq.Header.Set("Content-Type", "text/plain")
+	secondResp := httptest.NewRecorder()
+	router.ServeHTTP(secondResp, secondReq)
+	assert.Equal(t, http.StatusConflict, secondResp.Code)
+
+	secondBody, err := io.ReadAll(secondResp.Result().Body)
+	assert.NoError(t, err)
+	assert.Equal(t, string(firstBody), string(secondBody))
+}
+
+func TestHandler_ShortenJSON_DuplicateReturnsExistingURL(t *testing.T) {
+	storage := repository.NewMapStorage()
+	svc := service.NewShortenerService(storage, "http://localhost:8080/")
+	h := NewHandler(svc)
+
+	router := chi.NewRouter()
+	router.Post("/api/shorten", h.ShortenJson)
+
+	firstReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader(`{"url":"https://example.com"}`))
+	firstReq.Header.Set("Content-Type", "application/json")
+	firstResp := httptest.NewRecorder()
+	router.ServeHTTP(firstResp, firstReq)
+	assert.Equal(t, http.StatusCreated, firstResp.Code)
+
+	var firstPayload resp
+	err := json.NewDecoder(firstResp.Result().Body).Decode(&firstPayload)
+	assert.NoError(t, err)
+
+	secondReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader(`{"url":"https://example.com"}`))
+	secondReq.Header.Set("Content-Type", "application/json")
+	secondResp := httptest.NewRecorder()
+	router.ServeHTTP(secondResp, secondReq)
+	assert.Equal(t, http.StatusConflict, secondResp.Code)
+
+	var secondPayload resp
+	err = json.NewDecoder(secondResp.Result().Body).Decode(&secondPayload)
+	assert.NoError(t, err)
+	assert.Equal(t, firstPayload.Result, secondPayload.Result)
 }

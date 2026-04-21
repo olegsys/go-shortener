@@ -11,7 +11,7 @@ import (
 )
 
 type Shortener interface {
-	Shorten(ctx context.Context, longURL string) (string, error)
+	Shorten(ctx context.Context, longURL string) (string, bool, error)
 	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
 	Resolve(ctx context.Context, shortURL string) (string, bool, error)
 }
@@ -47,14 +47,18 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty url", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := h.shortener.Shorten(r.Context(), sourceURL)
+	shortURL, conflict, err := h.shortener.Shorten(r.Context(), sourceURL)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
+	if conflict {
+		w.WriteHeader(http.StatusConflict)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
 	if _, err := w.Write([]byte(shortURL)); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -75,14 +79,18 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty url", http.StatusBadRequest)
 		return
 	}
-	shortURL, err := h.shortener.Shorten(r.Context(), req.URL)
+	shortURL, conflict, err := h.shortener.Shorten(r.Context(), req.URL)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	res := resp{Result: shortURL}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	if conflict {
+		w.WriteHeader(http.StatusConflict)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
