@@ -66,6 +66,7 @@ func main() {
 	router.Post("/api/shorten", urlHandler.ShortenJson)
 	router.Post("/api/shorten/batch", urlHandler.ShortenBatchJson)
 	router.Get("/{id}", urlHandler.Redirect)
+	router.Get("/api/user/urls", urlHandler.GetUserURLs)
 	router.Get("/ping", pingHandler.Ping)
 
 	srv := &http.Server{

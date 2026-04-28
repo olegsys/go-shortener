@@ -11,6 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -49,22 +50,26 @@ func (p *PostgresStorage) Close(ctx context.Context) error {
 }
 
 func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
 	query := `
-		INSERT INTO short_urls (short_url, original_url)
-		VALUES ($1, $2)
-		ON CONFLICT (original_url) DO UPDATE
+		INSERT INTO short_urls (short_url, original_url, user_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, original_url) DO UPDATE
 		SET original_url = EXCLUDED.original_url
 		RETURNING short_url;
 	`
 
 	var storedShortURL string
-	if err := p.db.QueryRowContext(ctx, query, shortURL, longURL).Scan(&storedShortURL); err != nil {
+	if err := p.db.QueryRowContext(ctx, query, shortURL, longURL, userID).Scan(&storedShortURL); err != nil {
 		return "", false, fmt.Errorf("insert short url: %w", err)
 	}
 	return storedShortURL, storedShortURL == shortURL, nil
 }
 
 func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
 	if len(pairs) == 0 {
 		return nil, nil
 	}
@@ -76,9 +81,9 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) (
 	defer tx.Rollback()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO short_urls (short_url, original_url)
-		VALUES ($1, $2)
-		ON CONFLICT (original_url) DO UPDATE
+		INSERT INTO short_urls (short_url, original_url, user_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, original_url) DO UPDATE
 		SET original_url = EXCLUDED.original_url
 		RETURNING short_url;
 	`)
@@ -90,7 +95,7 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) (
 	results := make([]model.URLPair, len(pairs))
 	for i, pair := range pairs {
 		var actualShortID string
-		if err := stmt.QueryRowContext(ctx, pair.ShortURL, pair.LongURL).Scan(&actualShortID); err != nil {
+		if err := stmt.QueryRowContext(ctx, pair.ShortURL, pair.LongURL, userID).Scan(&actualShortID); err != nil {
 			return nil, err
 		}
 		results[i] = model.URLPair{
@@ -152,4 +157,31 @@ func runMigrations(dsn string) error {
 	}
 
 	return nil
+}
+
+func (p *PostgresStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
+	query := `SELECT short_url, original_url FROM short_urls WHERE user_id = $1`
+
+	rows, err := p.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("select user urls: %w", err)
+	}
+	defer rows.Close()
+
+	var urls []model.URLPair
+	for rows.Next() {
+		var short, original string
+		if err := rows.Scan(&short, &original); err != nil {
+			return nil, fmt.Errorf("scan user url: %w", err)
+		}
+		urls = append(urls, model.URLPair{ShortURL: short, LongURL: original})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("user urls rows error: %w", err)
+	}
+
+	return urls, nil
 }

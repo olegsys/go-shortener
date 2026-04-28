@@ -14,6 +14,7 @@ type URLStore interface {
 	Set(ctx context.Context, shortURL, longURL string) (string, bool, error)
 	SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error)
 	Get(ctx context.Context, s string) (string, bool, error)
+	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
 }
 
 type ShortenerService struct {
@@ -29,14 +30,29 @@ func NewShortenerService(storage URLStore, baseURL string) *ShortenerService {
 }
 
 func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string, bool, error) {
-	shortURL, err := generateID()
-	if err != nil {
-		return "", false, fmt.Errorf("generate short id: %w", err)
+	const maxRetries = 10
+	var storedShortURL string
+	var created bool
+	var err error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		shortURL, err := generateID()
+		if err != nil {
+			return "", false, fmt.Errorf("generate short id: %w", err)
+		}
+
+		storedShortURL, created, err = s.storage.Set(ctx, shortURL, longURL)
+		if err != nil {
+			if strings.Contains(err.Error(), "conflict") || strings.Contains(err.Error(), "duplicate") {
+				continue
+			}
+			return "", false, fmt.Errorf("save short url: %w", err)
+		}
+		break
 	}
 
-	storedShortURL, created, err := s.storage.Set(ctx, shortURL, longURL)
 	if err != nil {
-		return "", false, fmt.Errorf("save short url: %w", err)
+		return "", false, fmt.Errorf("save short url after retries: %w", err)
 	}
 
 	return strings.TrimSuffix(s.baseURL, "/") + "/" + storedShortURL, !created, nil
@@ -74,6 +90,23 @@ func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string
 		return "", false, fmt.Errorf("resolve short url: %w", err)
 	}
 	return longURL, exists, nil
+}
+
+func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
+	urls, err := s.storage.GetUserURLs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get user urls: %w", err)
+	}
+
+	results := make([]model.URLPair, len(urls))
+	for i, url := range urls {
+		results[i] = model.URLPair{
+			ShortURL: strings.TrimSuffix(s.baseURL, "/") + "/" + url.ShortURL,
+			LongURL:  url.LongURL,
+		}
+	}
+
+	return results, nil
 }
 
 func generateID() (string, error) {

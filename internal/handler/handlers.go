@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -14,6 +15,7 @@ type Shortener interface {
 	Shorten(ctx context.Context, longURL string) (string, bool, error)
 	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
 	Resolve(ctx context.Context, shortURL string) (string, bool, error)
+	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
 }
 type request struct {
 	URL string `json:"url"`
@@ -146,4 +148,30 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Location", longURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	urls, err := h.shortener.GetUserURLs(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(urls); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 }

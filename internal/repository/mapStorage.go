@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -14,25 +16,38 @@ type Record struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
 }
 type MapStorage struct {
 	data     map[string]Record
-	urlIndex map[string]string
+	urlIndex map[string]map[string]string
 	mutex    sync.RWMutex
 }
 
 func NewMapStorage() *MapStorage {
 	return &MapStorage{
 		data:     make(map[string]Record),
-		urlIndex: make(map[string]string),
+		urlIndex: make(map[string]map[string]string),
 	}
 }
 
 func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	if existingShortURL, ok := m.urlIndex[longURL]; ok {
+	if _, exists := m.data[shortURL]; exists {
+		return "", false, errors.New("short URL already exists")
+	}
+
+	userMap, ok := m.urlIndex[userID]
+	if !ok {
+		userMap = make(map[string]string)
+		m.urlIndex[userID] = userMap
+	}
+
+	if existingShortURL, ok := userMap[longURL]; ok {
 		return existingShortURL, false, nil
 	}
 
@@ -41,35 +56,56 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string,
 		UUID:        id.String(),
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
+		UserID:      userID,
 	}
-	m.urlIndex[longURL] = shortURL
+	userMap[longURL] = shortURL
 
 	return shortURL, true, nil
 }
 
 func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	results := make([]model.URLPair, len(pairs))
+
+	userMap, ok := m.urlIndex[userID]
+	if !ok {
+		userMap = make(map[string]string)
+		m.urlIndex[userID] = userMap
+	}
+
 	for i, pair := range pairs {
-		if existingShortID, ok := m.urlIndex[pair.LongURL]; ok {
+		shortURL := pair.ShortURL
+		longURL := pair.LongURL
+
+		if _, exists := m.data[shortURL]; exists {
+			return nil, errors.New("short URL already exists: " + shortURL)
+		}
+
+		if existingShortID, ok := userMap[longURL]; ok {
 			results[i] = model.URLPair{
 				ShortURL: existingShortID,
-				LongURL:  pair.LongURL,
+				LongURL:  longURL,
 			}
 			continue
 		}
 
 		id := uuid.New()
-		m.data[pair.ShortURL] = Record{
+		m.data[shortURL] = Record{
 			UUID:        id.String(),
-			ShortURL:    pair.ShortURL,
-			OriginalURL: pair.LongURL,
+			ShortURL:    shortURL,
+			OriginalURL: longURL,
+			UserID:      userID,
 		}
-		m.urlIndex[pair.LongURL] = pair.ShortURL
+		userMap[longURL] = shortURL
 
-		results[i] = pair
+		results[i] = model.URLPair{
+			ShortURL: shortURL,
+			LongURL:  longURL,
+		}
 	}
 
 	return results, nil
@@ -101,7 +137,12 @@ func (m *MapStorage) LoadFromFile(filePath string) error {
 	defer m.mutex.Unlock()
 	for _, rec := range records {
 		m.data[rec.ShortURL] = rec
-		m.urlIndex[rec.OriginalURL] = rec.ShortURL
+		userMap, ok := m.urlIndex[rec.UserID]
+		if !ok {
+			userMap = make(map[string]string)
+			m.urlIndex[rec.UserID] = userMap
+		}
+		userMap[rec.OriginalURL] = rec.ShortURL
 	}
 	return nil
 }
@@ -121,4 +162,22 @@ func (m *MapStorage) SaveToFile(filePath string) error {
 	}
 
 	return os.WriteFile(filePath, data, 0644)
+}
+
+func (m *MapStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	var urls []model.URLPair
+	for _, rec := range m.data {
+		if rec.UserID == userID {
+			urls = append(urls, model.URLPair{
+				ShortURL: rec.ShortURL,
+				LongURL:  rec.OriginalURL,
+			})
+		}
+	}
+	return urls, nil
 }
