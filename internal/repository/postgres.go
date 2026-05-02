@@ -111,19 +111,21 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) (
 	return results, nil
 }
 
-func (p *PostgresStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {
-	query := `SELECT original_url FROM short_urls WHERE short_url = $1`
+func (p *PostgresStorage) Get(ctx context.Context, shortURL string) (string, bool, bool, error) {
+	query := `SELECT original_url, is_deleted FROM short_urls WHERE short_url = $1`
 
 	var originalURL string
-	err := p.db.QueryRowContext(ctx, query, shortURL).Scan(&originalURL)
+	var isDeleted bool
+
+	err := p.db.QueryRowContext(ctx, query, shortURL).Scan(&originalURL, &isDeleted)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", false, nil
+			return "", false, false, nil
 		}
-		return "", false, fmt.Errorf("select original url: %w", err)
+		return "", false, false, fmt.Errorf("select original url: %w", err)
 	}
 
-	return originalURL, true, nil
+	return originalURL, true, isDeleted, nil
 }
 
 func runMigrations(dsn string) error {
@@ -162,7 +164,7 @@ func runMigrations(dsn string) error {
 func (p *PostgresStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
 	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
-	query := `SELECT short_url, original_url FROM short_urls WHERE user_id = $1`
+	query := `SELECT short_url, original_url FROM short_urls WHERE user_id = $1 AND is_deleted = false`
 
 	rows, err := p.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -184,4 +186,17 @@ func (p *PostgresStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, err
 	}
 
 	return urls, nil
+}
+
+func (p *PostgresStorage) DeleteBatch(ctx context.Context, userID string, ids []string) error {
+	query := `
+		UPDATE short_urls 
+		SET is_deleted = true 
+		WHERE user_id = $1 AND short_url = ANY($2)
+	`
+	_, err := p.db.ExecContext(ctx, query, userID, ids)
+	if err != nil {
+		return fmt.Errorf("batch delete urls: %w", err)
+	}
+	return nil
 }

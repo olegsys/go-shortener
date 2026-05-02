@@ -13,8 +13,9 @@ import (
 type URLStore interface {
 	Set(ctx context.Context, shortURL, longURL string) (string, bool, error)
 	SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error)
-	Get(ctx context.Context, s string) (string, bool, error)
+	Get(ctx context.Context, shortURL string) (string, bool, bool, error)
 	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
+	DeleteBatch(ctx context.Context, userID string, ids []string) error
 }
 
 type ShortenerService struct {
@@ -84,12 +85,12 @@ func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.Short
 	return results, nil
 }
 
-func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string, bool, error) {
-	longURL, exists, err := s.storage.Get(ctx, shortURL)
+func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string, bool, bool, error) {
+	longURL, exists, isDeleted, err := s.storage.Get(ctx, shortURL)
 	if err != nil {
-		return "", false, fmt.Errorf("resolve short url: %w", err)
+		return "", false, false, fmt.Errorf("resolve short url: %w", err)
 	}
-	return longURL, exists, nil
+	return longURL, exists, isDeleted, nil
 }
 
 func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
@@ -107,6 +108,10 @@ func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, er
 	}
 
 	return results, nil
+}
+
+func (s *ShortenerService) DeleteURLs(ctx context.Context, userID string, ids []string) error {
+	return s.storage.DeleteBatch(ctx, userID, ids)
 }
 
 func generateID() (string, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/olegsys/go-shortener/internal/middleware"
@@ -14,8 +15,9 @@ import (
 type Shortener interface {
 	Shorten(ctx context.Context, longURL string) (string, bool, error)
 	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
-	Resolve(ctx context.Context, shortURL string) (string, bool, error)
+	Resolve(ctx context.Context, shortURL string) (string, bool, bool, error)
 	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
+	DeleteURLs(ctx context.Context, userID string, ids []string) error
 }
 type request struct {
 	URL string `json:"url"`
@@ -23,14 +25,22 @@ type request struct {
 type resp struct {
 	Result string `json:"result"`
 }
+type DeleteTask struct {
+	UserID  string
+	ShortID string
+}
 type Handler struct {
-	shortener Shortener
+	shortener  Shortener
+	deleteChan chan DeleteTask
 }
 
 func NewHandler(shortener Shortener) *Handler {
-	return &Handler{
-		shortener: shortener,
+	h := &Handler{
+		shortener:  shortener,
+		deleteChan: make(chan DeleteTask, 100),
 	}
+	go h.runDeleteWorker()
+	return h
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
@@ -137,13 +147,17 @@ func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	shortURL := chi.URLParam(r, "id")
-	longURL, exists, err := h.shortener.Resolve(r.Context(), shortURL)
+	longURL, exists, isDeleted, err := h.shortener.Resolve(r.Context(), shortURL)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	if !exists {
 		http.Error(w, "not found", http.StatusBadRequest)
+		return
+	}
+	if isDeleted {
+		w.WriteHeader(http.StatusGone)
 		return
 	}
 	w.Header().Set("Location", longURL)
@@ -173,5 +187,62 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(urls); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
+	}
+}
+
+func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, "invalid request json", http.StatusBadRequest)
+		return
+	}
+
+	for _, id := range ids {
+		h.deleteChan <- DeleteTask{
+			UserID:  userID,
+			ShortID: id,
+		}
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (h *Handler) runDeleteWorker() {
+	ticker := time.NewTicker(1 * time.Second)
+	buffer := make([]DeleteTask, 0, 50)
+	for {
+		select {
+		case task := <-h.deleteChan:
+			buffer = append(buffer, task)
+			if len(buffer) >= 50 {
+				h.flush(buffer)
+				buffer = buffer[:0]
+			}
+		case <-ticker.C:
+			if len(buffer) > 0 {
+				h.flush(buffer)
+				buffer = buffer[:0]
+			}
+		}
+	}
+}
+
+func (h *Handler) flush(tasks []DeleteTask) {
+	groups := make(map[string][]string)
+
+	for _, t := range tasks {
+		groups[t.UserID] = append(groups[t.UserID], t.ShortID)
+	}
+
+	for userID, ids := range groups {
+		go func(uid string, shortIDs []string) {
+			_ = h.shortener.DeleteURLs(context.Background(), uid, shortIDs)
+		}(userID, ids)
 	}
 }

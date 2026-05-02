@@ -17,6 +17,7 @@ type Record struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 	UserID      string `json:"user_id"`
+	IsDeleted   bool   `json:"is_deleted"`
 }
 type MapStorage struct {
 	data     map[string]Record
@@ -57,6 +58,7 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string,
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
 		UserID:      userID,
+		IsDeleted:   false,
 	}
 	userMap[longURL] = shortURL
 
@@ -99,6 +101,7 @@ func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]mod
 			ShortURL:    shortURL,
 			OriginalURL: longURL,
 			UserID:      userID,
+			IsDeleted:   false,
 		}
 		userMap[longURL] = shortURL
 
@@ -111,11 +114,15 @@ func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]mod
 	return results, nil
 }
 
-func (m *MapStorage) Get(ctx context.Context, s string) (string, bool, error) {
+func (m *MapStorage) Get(ctx context.Context, s string) (string, bool, bool, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
+
 	record, exist := m.data[s]
-	return record.OriginalURL, exist, nil
+	if !exist {
+		return "", false, false, nil
+	}
+	return record.OriginalURL, exist, record.IsDeleted, nil
 }
 
 func (m *MapStorage) LoadFromFile(filePath string) error {
@@ -172,7 +179,7 @@ func (m *MapStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
 
 	var urls []model.URLPair
 	for _, rec := range m.data {
-		if rec.UserID == userID {
+		if rec.UserID == userID && !rec.IsDeleted {
 			urls = append(urls, model.URLPair{
 				ShortURL: rec.ShortURL,
 				LongURL:  rec.OriginalURL,
@@ -180,4 +187,19 @@ func (m *MapStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
 		}
 	}
 	return urls, nil
+}
+
+func (m *MapStorage) DeleteBatch(ctx context.Context, userID string, ids []string) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for _, id := range ids {
+		if record, ok := m.data[id]; ok {
+			if record.UserID == userID {
+				record.IsDeleted = true
+				m.data[id] = record
+			}
+		}
+	}
+	return nil
 }

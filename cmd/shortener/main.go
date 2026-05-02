@@ -68,6 +68,7 @@ func main() {
 	router.Get("/{id}", urlHandler.Redirect)
 	router.Get("/api/user/urls", urlHandler.GetUserURLs)
 	router.Get("/ping", pingHandler.Ping)
+	router.Delete("/api/user/urls", urlHandler.DeleteURLs)
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddress,
