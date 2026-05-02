@@ -49,7 +49,7 @@ func (p *PostgresStorage) Close(ctx context.Context) error {
 	return p.db.Close()
 }
 
-func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
+func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (shortID string, created bool, err error) {
 	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
 	query := `
@@ -60,11 +60,10 @@ func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (st
 		RETURNING short_url;
 	`
 
-	var storedShortURL string
-	if err := p.db.QueryRowContext(ctx, query, shortURL, longURL, userID).Scan(&storedShortURL); err != nil {
+	if err := p.db.QueryRowContext(ctx, query, shortURL, longURL, userID).Scan(&shortID); err != nil {
 		return "", false, fmt.Errorf("insert short url: %w", err)
 	}
-	return storedShortURL, storedShortURL == shortURL, nil
+	return shortURL, shortURL == shortID, nil
 }
 
 func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
@@ -111,11 +110,10 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) (
 	return results, nil
 }
 
-func (p *PostgresStorage) Get(ctx context.Context, shortURL string) (string, bool, error) {
+func (p *PostgresStorage) Get(ctx context.Context, s string) (originalURL string, exists bool, err error) {
 	query := `SELECT original_url FROM short_urls WHERE short_url = $1`
 
-	var originalURL string
-	err := p.db.QueryRowContext(ctx, query, shortURL).Scan(&originalURL)
+	err = p.db.QueryRowContext(ctx, query, s).Scan(&originalURL)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", false, nil

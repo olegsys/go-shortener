@@ -31,7 +31,7 @@ func NewMapStorage() *MapStorage {
 	}
 }
 
-func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
+func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (shortID string, created bool, err error) {
 	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
 	m.mutex.Lock()
@@ -52,15 +52,16 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string,
 	}
 
 	id := uuid.New()
-	m.data[shortURL] = Record{
+	shortID = shortURL
+	m.data[shortID] = Record{
 		UUID:        id.String(),
-		ShortURL:    shortURL,
+		ShortURL:    shortID,
 		OriginalURL: longURL,
 		UserID:      userID,
 	}
-	userMap[longURL] = shortURL
+	userMap[longURL] = shortID
 
-	return shortURL, true, nil
+	return shortID, true, nil
 }
 
 func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
@@ -111,11 +112,11 @@ func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]mod
 	return results, nil
 }
 
-func (m *MapStorage) Get(ctx context.Context, s string) (string, bool, error) {
+func (m *MapStorage) Get(ctx context.Context, s string) (originalURL string, exists bool, err error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
-	record, exist := m.data[s]
-	return record.OriginalURL, exist, nil
+	record, exists := m.data[s]
+	return record.OriginalURL, exists, nil
 }
 
 func (m *MapStorage) LoadFromFile(filePath string) error {

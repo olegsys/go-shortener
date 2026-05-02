@@ -11,9 +11,9 @@ import (
 )
 
 type URLStore interface {
-	Set(ctx context.Context, shortURL, longURL string) (string, bool, error)
+	Set(ctx context.Context, shortURL, longURL string) (shortID string, created bool, err error)
 	SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error)
-	Get(ctx context.Context, s string) (string, bool, error)
+	Get(ctx context.Context, s string) (originalURL string, exists bool, err error)
 	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
 }
 
