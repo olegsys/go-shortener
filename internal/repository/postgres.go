@@ -188,8 +188,5 @@ func (p *PostgresStorage) DeleteBatch(ctx context.Context, userID string, ids []
 		WHERE user_id = $1 AND short_url = ANY($2)
 	`
 	_, err := p.db.ExecContext(ctx, query, userID, ids)
-	if err != nil {
-		return fmt.Errorf("batch delete urls: %w", err)
-	}
-	return nil
+	return err
 }

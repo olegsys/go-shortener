@@ -18,6 +18,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type mockDeletionService struct{}
+
+func (m *mockDeletionService) Enqueue(userID, shortID string) error {
+	return nil
+}
+
 type response struct {
 	httpCode    int
 	message     string
@@ -28,7 +34,7 @@ type response struct {
 func TestHandler_Shorten(t *testing.T) {
 	storage := repository.NewMapStorage()
 	svc := service.NewShortenerService(storage, "http://localhost:8080/")
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	router := chi.NewRouter()
 	router.Post("/", h.Shorten)
@@ -114,7 +120,7 @@ func TestHandler_Redirect(t *testing.T) {
 	_, _, err := storage.Set(ctx, mockData.userID, mockData.id, mockData.longURL)
 	assert.NoError(t, err)
 	svc := service.NewShortenerService(storage, mockData.baseURL)
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	router := chi.NewRouter()
 	router.Get("/{id}", h.Redirect)
@@ -162,7 +168,7 @@ func TestHandler_Redirect(t *testing.T) {
 func TestHandler_ShortenJson(t *testing.T) {
 	storage := repository.NewMapStorage()
 	svc := service.NewShortenerService(storage, "http://localhost:8080/")
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	router := chi.NewRouter()
 	router.Post("/api/shorten", h.ShortenJson)
@@ -248,7 +254,7 @@ func TestHandler_ShortenJson(t *testing.T) {
 func TestHandler_ShortenBatchJson(t *testing.T) {
 	storage := repository.NewMapStorage()
 	svc := service.NewShortenerService(storage, "http://localhost:8080/")
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	router := chi.NewRouter()
 	router.Post("/api/shorten/batch", h.ShortenBatchJson)
@@ -319,7 +325,7 @@ func TestHandler_ShortenBatchJson(t *testing.T) {
 func TestHandler_Shorten_DuplicateReturnsExistingURL(t *testing.T) {
 	storage := repository.NewMapStorage()
 	svc := service.NewShortenerService(storage, "http://localhost:8080/")
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	router := chi.NewRouter()
 	router.Post("/", h.Shorten)
@@ -351,7 +357,7 @@ func TestHandler_Shorten_DuplicateReturnsExistingURL(t *testing.T) {
 func TestHandler_ShortenJSON_DuplicateReturnsExistingURL(t *testing.T) {
 	storage := repository.NewMapStorage()
 	svc := service.NewShortenerService(storage, "http://localhost:8080/")
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	router := chi.NewRouter()
 	router.Post("/api/shorten", h.ShortenJson)
@@ -385,7 +391,7 @@ func TestHandler_ShortenJSON_DuplicateReturnsExistingURL(t *testing.T) {
 func TestHandler_GetUserURLs(t *testing.T) {
 	storage := repository.NewMapStorage()
 	svc := service.NewShortenerService(storage, "http://localhost:8080/")
-	h := NewHandler(svc)
+	h := NewHandler(svc, &mockDeletionService{})
 
 	userID := "test-user-123"
 	ctx := context.WithValue(context.Background(), middleware.UserIDKey, userID)

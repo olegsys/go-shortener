@@ -54,7 +54,8 @@ func main() {
 	}
 
 	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
-	urlHandler := handler.NewHandler(shortenerService)
+	deletionSvc := service.NewDeletionService(shortenerService)
+	urlHandler := handler.NewHandler(shortenerService, deletionSvc)
 	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
 
@@ -91,8 +92,14 @@ func main() {
 	<-stop
 	logger.Info("Shutdown signal received")
 
+	deletionSvc.Shutdown()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("Graceful shutdown failed", zap.Error(err))
+		srv.Close()
+	}
 
 	if mapStorage != nil {
 		if err := mapStorage.SaveToFile(cfg.StorageFile); err != nil {
@@ -109,11 +116,6 @@ func main() {
 			)
 		}
 	}
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("Graceful shutdown failed",
-			zap.Error(err),
-		)
-		srv.Close()
-	}
+
 	logger.Info("Server stopped gracefully")
 }

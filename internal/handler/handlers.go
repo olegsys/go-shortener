@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/olegsys/go-shortener/internal/middleware"
@@ -19,28 +18,27 @@ type Shortener interface {
 	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
 	DeleteURLs(ctx context.Context, userID string, ids []string) error
 }
+type deletionService interface {
+	Enqueue(userID, shortID string) error
+}
+
 type request struct {
 	URL string `json:"url"`
 }
 type resp struct {
 	Result string `json:"result"`
 }
-type deleteTask struct {
-	userID  string
-	shortID string
-}
+
 type Handler struct {
-	shortener  Shortener
-	deleteChan chan deleteTask
+	shortener   Shortener
+	deletionSvc deletionService
 }
 
-func NewHandler(shortener Shortener) *Handler {
-	h := &Handler{
-		shortener:  shortener,
-		deleteChan: make(chan deleteTask, 100),
+func NewHandler(shortener Shortener, deletionSvc deletionService) *Handler {
+	return &Handler{
+		shortener:   shortener,
+		deletionSvc: deletionSvc,
 	}
-	go h.runDeleteWorker()
-	return h
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +46,6 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
 		return
 	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -203,45 +200,11 @@ func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, id := range ids {
-		h.deleteChan <- deleteTask{
-			userID:  userID,
-			shortID: id,
+		if err := h.deletionSvc.Enqueue(userID, id); err != nil {
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+			return
 		}
 	}
 
 	w.WriteHeader(http.StatusAccepted)
-}
-
-func (h *Handler) runDeleteWorker() {
-	ticker := time.NewTicker(1 * time.Second)
-	buffer := make([]deleteTask, 0, 50)
-	for {
-		select {
-		case task := <-h.deleteChan:
-			buffer = append(buffer, task)
-			if len(buffer) >= 50 {
-				h.flush(buffer)
-				buffer = buffer[:0]
-			}
-		case <-ticker.C:
-			if len(buffer) > 0 {
-				h.flush(buffer)
-				buffer = buffer[:0]
-			}
-		}
-	}
-}
-
-func (h *Handler) flush(tasks []deleteTask) {
-	groups := make(map[string][]string)
-
-	for _, t := range tasks {
-		groups[t.userID] = append(groups[t.userID], t.shortID)
-	}
-
-	for userID, ids := range groups {
-		go func(uid string, shortIDs []string) {
-			_ = h.shortener.DeleteURLs(context.Background(), uid, shortIDs)
-		}(userID, ids)
-	}
 }
