@@ -106,11 +106,12 @@ func TestHandler_Redirect(t *testing.T) {
 		baseURL string
 		id      string
 		longURL string
-	}{"http://localhost:8080/", "abc", "https://yandex.ru/test"}
+		userID  string
+	}{"http://localhost:8080/", "abc", "https://yandex.ru/test", "test-user-id"}
 
 	storage := repository.NewMapStorage()
-	ctx := context.WithValue(context.Background(), middleware.UserIDKey, "test-user-id")
-	_, _, err := storage.Set(ctx, mockData.id, mockData.longURL)
+	ctx := context.WithValue(context.Background(), middleware.UserIDKey, mockData.userID)
+	_, _, err := storage.Set(ctx, mockData.userID, mockData.id, mockData.longURL)
 	assert.NoError(t, err)
 	svc := service.NewShortenerService(storage, mockData.baseURL)
 	h := NewHandler(svc)
@@ -388,9 +389,9 @@ func TestHandler_GetUserURLs(t *testing.T) {
 
 	userID := "test-user-123"
 	ctx := context.WithValue(context.Background(), middleware.UserIDKey, userID)
-	_, _, err := storage.Set(ctx, "urltest1", "https://example.com")
+	_, _, err := storage.Set(ctx, userID, "urltest1", "https://example.com")
 	assert.NoError(t, err)
-	_, _, err = storage.Set(ctx, "urltest2", "https://yandex.ru")
+	_, _, err = storage.Set(ctx, userID, "urltest2", "https://yandex.ru")
 	assert.NoError(t, err)
 
 	router := chi.NewRouter()

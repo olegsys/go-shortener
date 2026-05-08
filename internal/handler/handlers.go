@@ -130,7 +130,6 @@ func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	batchResult, err := h.shortener.ShortenBatch(r.Context(), req)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)

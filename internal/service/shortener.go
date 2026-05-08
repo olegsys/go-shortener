@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type URLStore interface {
-	Set(ctx context.Context, shortURL, longURL string) (string, bool, error)
-	SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error)
+	Set(ctx context.Context, userID, shortURL, longURL string) (string, bool, error)
+	SetBatch(ctx context.Context, userID string, pairs []model.URLPair) ([]model.URLPair, error)
 	Get(ctx context.Context, shortURL string) (string, bool, bool, error)
-	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
+	GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error)
 	DeleteBatch(ctx context.Context, userID string, ids []string) error
 }
 
@@ -31,6 +32,7 @@ func NewShortenerService(storage URLStore, baseURL string) *ShortenerService {
 }
 
 func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string, bool, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 	const maxRetries = 10
 	var storedShortURL string
 	var created bool
@@ -42,7 +44,7 @@ func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string,
 			return "", false, fmt.Errorf("generate short id: %w", err)
 		}
 
-		storedShortURL, created, err = s.storage.Set(ctx, shortURL, longURL)
+		storedShortURL, created, err = s.storage.Set(ctx, userID, shortURL, longURL)
 		if err != nil {
 			if strings.Contains(err.Error(), "conflict") || strings.Contains(err.Error(), "duplicate") {
 				continue
@@ -60,6 +62,8 @@ func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string,
 }
 
 func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error) {
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+
 	pairs := make([]model.URLPair, len(items))
 	for i, item := range items {
 		shortID, err := generateID()
@@ -69,7 +73,7 @@ func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.Short
 		pairs[i] = model.URLPair{ShortURL: shortID, LongURL: item.OriginalURL}
 	}
 
-	persistedPairs, err := s.storage.SetBatch(ctx, pairs)
+	persistedPairs, err := s.storage.SetBatch(ctx, userID, pairs)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +98,8 @@ func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string
 }
 
 func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
-	urls, err := s.storage.GetUserURLs(ctx)
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
+	urls, err := s.storage.GetUserURLs(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user urls: %w", err)
 	}
