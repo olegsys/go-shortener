@@ -25,19 +25,19 @@ type request struct {
 type resp struct {
 	Result string `json:"result"`
 }
-type DeleteTask struct {
-	UserID  string
-	ShortID string
+type deleteTask struct {
+	userID  string
+	shortID string
 }
 type Handler struct {
 	shortener  Shortener
-	deleteChan chan DeleteTask
+	deleteChan chan deleteTask
 }
 
 func NewHandler(shortener Shortener) *Handler {
 	h := &Handler{
 		shortener:  shortener,
-		deleteChan: make(chan DeleteTask, 100),
+		deleteChan: make(chan deleteTask, 100),
 	}
 	go h.runDeleteWorker()
 	return h
@@ -204,9 +204,9 @@ func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, id := range ids {
-		h.deleteChan <- DeleteTask{
-			UserID:  userID,
-			ShortID: id,
+		h.deleteChan <- deleteTask{
+			userID:  userID,
+			shortID: id,
 		}
 	}
 
@@ -215,7 +215,7 @@ func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) runDeleteWorker() {
 	ticker := time.NewTicker(1 * time.Second)
-	buffer := make([]DeleteTask, 0, 50)
+	buffer := make([]deleteTask, 0, 50)
 	for {
 		select {
 		case task := <-h.deleteChan:
@@ -233,11 +233,11 @@ func (h *Handler) runDeleteWorker() {
 	}
 }
 
-func (h *Handler) flush(tasks []DeleteTask) {
+func (h *Handler) flush(tasks []deleteTask) {
 	groups := make(map[string][]string)
 
 	for _, t := range tasks {
-		groups[t.UserID] = append(groups[t.UserID], t.ShortID)
+		groups[t.userID] = append(groups[t.userID], t.shortID)
 	}
 
 	for userID, ids := range groups {
