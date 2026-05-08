@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/google/uuid"
 )
+
+type ctxKey string
+
+const UserIDKey ctxKey = "userID"
+
+type AuthConfig struct {
+	SecretKey string
+}
 
 func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
 	key := []byte(secretKey)
@@ -54,7 +63,8 @@ func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
 				})
 			}
 
-			next.ServeHTTP(w, r)
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

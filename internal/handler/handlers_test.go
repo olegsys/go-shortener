@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 	"github.com/olegsys/go-shortener/internal/repository"
 	"github.com/olegsys/go-shortener/internal/service"
@@ -78,7 +80,8 @@ func TestHandler_Shorten(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(tt.method, "http://localhost:8080/", strings.NewReader(tt.inputBody))
 			r.Header.Set("Content-Type", tt.contentType)
-			r.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+			ctx := context.WithValue(r.Context(), middleware.UserIDKey, "test-user")
+			r = r.WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			router.ServeHTTP(w, r)
@@ -106,7 +109,8 @@ func TestHandler_Redirect(t *testing.T) {
 	}{"http://localhost:8080/", "abc", "https://yandex.ru/test"}
 
 	storage := repository.NewMapStorage()
-	_, _, err := storage.Set(nil, "test-user-id", mockData.id, mockData.longURL)
+	ctx := context.WithValue(context.Background(), middleware.UserIDKey, "test-user-id")
+	_, _, err := storage.Set(ctx, mockData.id, mockData.longURL)
 	assert.NoError(t, err)
 	svc := service.NewShortenerService(storage, mockData.baseURL)
 	h := NewHandler(svc)
@@ -221,7 +225,8 @@ func TestHandler_ShortenJson(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(tt.method, "http://localhost:8080/api/shorten", strings.NewReader(tt.inputBody))
 			r.Header.Set("Content-Type", tt.contentType)
-			r.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+			ctx := context.WithValue(r.Context(), middleware.UserIDKey, "test-user")
+			r = r.WithContext(ctx)
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, r)
 			res := w.Result()
@@ -285,7 +290,8 @@ func TestHandler_ShortenBatchJson(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(tt.method, "http://localhost:8080/api/shorten/batch", strings.NewReader(tt.inputBody))
 			r.Header.Set("Content-Type", tt.contentType)
-			r.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+			ctx := context.WithValue(r.Context(), middleware.UserIDKey, "test-user")
+			r = r.WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			router.ServeHTTP(w, r)
@@ -319,7 +325,8 @@ func TestHandler_Shorten_DuplicateReturnsExistingURL(t *testing.T) {
 
 	firstReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/", strings.NewReader("https://example.com"))
 	firstReq.Header.Set("Content-Type", "text/plain")
-	firstReq.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+	ctx := context.WithValue(firstReq.Context(), middleware.UserIDKey, "test-user")
+	firstReq = firstReq.WithContext(ctx)
 	firstResp := httptest.NewRecorder()
 	router.ServeHTTP(firstResp, firstReq)
 	assert.Equal(t, http.StatusCreated, firstResp.Code)
@@ -329,7 +336,8 @@ func TestHandler_Shorten_DuplicateReturnsExistingURL(t *testing.T) {
 
 	secondReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/", strings.NewReader("https://example.com"))
 	secondReq.Header.Set("Content-Type", "text/plain")
-	secondReq.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+	ctx2 := context.WithValue(secondReq.Context(), middleware.UserIDKey, "test-user")
+	secondReq = secondReq.WithContext(ctx2)
 	secondResp := httptest.NewRecorder()
 	router.ServeHTTP(secondResp, secondReq)
 	assert.Equal(t, http.StatusConflict, secondResp.Code)
@@ -349,7 +357,8 @@ func TestHandler_ShortenJSON_DuplicateReturnsExistingURL(t *testing.T) {
 
 	firstReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader(`{"url":"https://example.com"}`))
 	firstReq.Header.Set("Content-Type", "application/json")
-	firstReq.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+	ctx := context.WithValue(firstReq.Context(), middleware.UserIDKey, "test-user")
+	firstReq = firstReq.WithContext(ctx)
 	firstResp := httptest.NewRecorder()
 	router.ServeHTTP(firstResp, firstReq)
 	assert.Equal(t, http.StatusCreated, firstResp.Code)
@@ -360,7 +369,8 @@ func TestHandler_ShortenJSON_DuplicateReturnsExistingURL(t *testing.T) {
 
 	secondReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader(`{"url":"https://example.com"}`))
 	secondReq.Header.Set("Content-Type", "application/json")
-	secondReq.AddCookie(&http.Cookie{Name: "user_id", Value: "test-user"})
+	ctx2 := context.WithValue(secondReq.Context(), middleware.UserIDKey, "test-user")
+	secondReq = secondReq.WithContext(ctx2)
 	secondResp := httptest.NewRecorder()
 	router.ServeHTTP(secondResp, secondReq)
 	assert.Equal(t, http.StatusConflict, secondResp.Code)
@@ -377,9 +387,10 @@ func TestHandler_GetUserURLs(t *testing.T) {
 	h := NewHandler(svc)
 
 	userID := "test-user-123"
-	_, _, err := storage.Set(nil, userID, "urltest1", "https://example.com")
+	ctx := context.WithValue(context.Background(), middleware.UserIDKey, userID)
+	_, _, err := storage.Set(ctx, "urltest1", "https://example.com")
 	assert.NoError(t, err)
-	_, _, err = storage.Set(nil, userID, "urltest2", "https://yandex.ru")
+	_, _, err = storage.Set(ctx, "urltest2", "https://yandex.ru")
 	assert.NoError(t, err)
 
 	router := chi.NewRouter()
@@ -415,7 +426,8 @@ func TestHandler_GetUserURLs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/api/user/urls", nil)
 			if tt.userID != "" {
-				r.AddCookie(&http.Cookie{Name: "user_id", Value: tt.userID})
+				ctx := context.WithValue(r.Context(), middleware.UserIDKey, tt.userID)
+				r = r.WithContext(ctx)
 			}
 			w := httptest.NewRecorder()
 
