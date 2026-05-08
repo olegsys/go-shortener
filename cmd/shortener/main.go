@@ -59,7 +59,7 @@ func main() {
 	router := chi.NewRouter()
 
 	router.Use(middleware.Logging(logger))
-	router.Use(middleware.AuthMiddleware)
+	router.Use(middleware.AuthMiddleware(cfg.SecretKey))
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
 	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
