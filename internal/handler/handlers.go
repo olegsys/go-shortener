@@ -5,18 +5,18 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type Shortener interface {
-	Shorten(ctx context.Context, longURL string) (string, bool, error)
-	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
+	Shorten(ctx context.Context, userID, longURL string) (string, bool, error)
+	ShortenBatch(ctx context.Context, userID string, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
 	Resolve(ctx context.Context, shortURL string) (string, bool, bool, error)
-	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
+	GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error)
 	DeleteURLs(ctx context.Context, userID string, ids []string) error
 }
 type request struct {
@@ -59,7 +59,8 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty url", http.StatusBadRequest)
 		return
 	}
-	shortURL, conflict, err := h.shortener.Shorten(r.Context(), sourceURL)
+	userID := extractUserID(r)
+	shortURL, conflict, err := h.shortener.Shorten(r.Context(), userID, sourceURL)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -91,7 +92,8 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty url", http.StatusBadRequest)
 		return
 	}
-	shortURL, conflict, err := h.shortener.Shorten(r.Context(), req.URL)
+	userID := extractUserID(r)
+	shortURL, conflict, err := h.shortener.Shorten(r.Context(), userID, req.URL)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -131,7 +133,8 @@ func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	batchResult, err := h.shortener.ShortenBatch(r.Context(), req)
+	userID := extractUserID(r)
+	batchResult, err := h.shortener.ShortenBatch(r.Context(), userID, req)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -165,13 +168,13 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
-	if !ok || userID == "" {
+	userID := extractUserID(r)
+	if userID == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	urls, err := h.shortener.GetUserURLs(r.Context())
+	urls, err := h.shortener.GetUserURLs(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -191,11 +194,7 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
-	if !ok || userID == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
+	userID := extractUserID(r)
 
 	var ids []string
 	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
@@ -245,4 +244,16 @@ func (h *Handler) flush(tasks []deleteTask) {
 			_ = h.shortener.DeleteURLs(context.Background(), uid, shortIDs)
 		}(userID, ids)
 	}
+}
+
+func extractUserID(r *http.Request) string {
+	cookie, err := r.Cookie("user_id")
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(cookie.Value, "|")
+	if len(parts) >= 1 {
+		return parts[0]
+	}
+	return ""
 }

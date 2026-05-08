@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -32,9 +31,7 @@ func NewMapStorage() *MapStorage {
 	}
 }
 
-func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
-	userID, _ := ctx.Value(middleware.UserIDKey).(string)
-
+func (m *MapStorage) Set(ctx context.Context, userID, shortURL, longURL string) (string, bool, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -65,9 +62,7 @@ func (m *MapStorage) Set(ctx context.Context, shortURL, longURL string) (string,
 	return shortURL, true, nil
 }
 
-func (m *MapStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
-	userID, _ := ctx.Value(middleware.UserIDKey).(string)
-
+func (m *MapStorage) SetBatch(ctx context.Context, userID string, pairs []model.URLPair) ([]model.URLPair, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -171,9 +166,7 @@ func (m *MapStorage) SaveToFile(filePath string) error {
 	return os.WriteFile(filePath, data, 0644)
 }
 
-func (m *MapStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
-	userID, _ := ctx.Value(middleware.UserIDKey).(string)
-
+func (m *MapStorage) GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 

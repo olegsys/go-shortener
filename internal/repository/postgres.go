@@ -11,7 +11,6 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
@@ -49,9 +48,7 @@ func (p *PostgresStorage) Close(ctx context.Context) error {
 	return p.db.Close()
 }
 
-func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (string, bool, error) {
-	userID, _ := ctx.Value(middleware.UserIDKey).(string)
-
+func (p *PostgresStorage) Set(ctx context.Context, userID, shortURL, longURL string) (string, bool, error) {
 	query := `
 		INSERT INTO short_urls (short_url, original_url, user_id)
 		VALUES ($1, $2, $3)
@@ -67,9 +64,7 @@ func (p *PostgresStorage) Set(ctx context.Context, shortURL, longURL string) (st
 	return storedShortURL, storedShortURL == shortURL, nil
 }
 
-func (p *PostgresStorage) SetBatch(ctx context.Context, pairs []model.URLPair) ([]model.URLPair, error) {
-	userID, _ := ctx.Value(middleware.UserIDKey).(string)
-
+func (p *PostgresStorage) SetBatch(ctx context.Context, userID string, pairs []model.URLPair) ([]model.URLPair, error) {
 	if len(pairs) == 0 {
 		return nil, nil
 	}
@@ -161,9 +156,7 @@ func runMigrations(dsn string) error {
 	return nil
 }
 
-func (p *PostgresStorage) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
-	userID, _ := ctx.Value(middleware.UserIDKey).(string)
-
+func (p *PostgresStorage) GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error) {
 	query := `SELECT short_url, original_url FROM short_urls WHERE user_id = $1 AND is_deleted = false`
 
 	rows, err := p.db.QueryContext(ctx, query, userID)
