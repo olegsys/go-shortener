@@ -1,8 +1,8 @@
 package model
 
 type URLPair struct {
-	ShortURL string
-	LongURL  string
+	ShortURL string `json:"short_url"`
+	LongURL  string `json:"original_url"`
 }
 
 type ShortenBatchItem struct {
