@@ -10,6 +10,7 @@ type Config struct {
 	BaseURL       string
 	StorageFile   string
 	DatabaseDSN   string
+	SecretKey     string
 }
 
 func LoadConfig() *Config {
@@ -18,6 +19,7 @@ func LoadConfig() *Config {
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080/", "base url")
 	flag.StringVar(&cfg.StorageFile, "f", "", "storage file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database dsn")
+	flag.StringVar(&cfg.SecretKey, "s", "secret_key", "cookie secret key")
 	flag.Parse()
 	if val := os.Getenv("SERVER_ADDRESS"); val != "" {
 		cfg.ListenAddress = val
@@ -30,6 +32,9 @@ func LoadConfig() *Config {
 	}
 	if val := os.Getenv("DATABASE_DSN"); val != "" {
 		cfg.DatabaseDSN = val
+	}
+	if val := os.Getenv("SECRET_KEY"); val != "" {
+		cfg.SecretKey = val
 	}
 	return cfg
 }

@@ -14,22 +14,30 @@ import (
 type Shortener interface {
 	Shorten(ctx context.Context, longURL string) (string, bool, error)
 	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
-	Resolve(ctx context.Context, shortURL string) (string, bool, error)
+	Resolve(ctx context.Context, shortURL string) (string, bool, bool, error)
 	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
+	DeleteURLs(ctx context.Context, userID string, ids []string) error
 }
+type deletionService interface {
+	Enqueue(userID, shortID string) error
+}
+
 type request struct {
 	URL string `json:"url"`
 }
 type resp struct {
 	Result string `json:"result"`
 }
+
 type Handler struct {
-	shortener Shortener
+	shortener   Shortener
+	deletionSvc deletionService
 }
 
-func NewHandler(shortener Shortener) *Handler {
+func NewHandler(shortener Shortener, deletionSvc deletionService) *Handler {
 	return &Handler{
-		shortener: shortener,
+		shortener:   shortener,
+		deletionSvc: deletionSvc,
 	}
 }
 
@@ -38,7 +46,6 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
 		return
 	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -120,7 +127,6 @@ func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	batchResult, err := h.shortener.ShortenBatch(r.Context(), req)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -137,13 +143,17 @@ func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	shortURL := chi.URLParam(r, "id")
-	longURL, exists, err := h.shortener.Resolve(r.Context(), shortURL)
+	longURL, exists, isDeleted, err := h.shortener.Resolve(r.Context(), shortURL)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	if !exists {
 		http.Error(w, "not found", http.StatusBadRequest)
+		return
+	}
+	if isDeleted {
+		w.WriteHeader(http.StatusGone)
 		return
 	}
 	w.Header().Set("Location", longURL)
@@ -174,4 +184,27 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		http.Error(w, "invalid request json", http.StatusBadRequest)
+		return
+	}
+
+	for _, id := range ids {
+		if err := h.deletionSvc.Enqueue(userID, id); err != nil {
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
