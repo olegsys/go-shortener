@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"net/http/pprof"
+
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/olegsys/go-shortener/internal/audit"
@@ -88,6 +90,14 @@ func main() {
 	router.Get("/api/user/urls", urlHandler.GetUserURLs)
 	router.Get("/ping", pingHandler.Ping)
 	router.Delete("/api/user/urls", urlHandler.DeleteURLs)
+	// Endpoints для pprof
+	router.HandleFunc("/debug/pprof/", pprof.Index)
+	router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	router.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	router.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	router.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+	router.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
+	router.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
 
 	srv := &http.Server{
 		Addr:    cfg.ListenAddress,
