@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// HTTPObserver реализует интерфейс Observer, отправляя события аудита на удаленный HTTP-сервер
 type HTTPObserver struct {
 	url    string
 	client *http.Client
@@ -16,6 +17,7 @@ type HTTPObserver struct {
 	wg     sync.WaitGroup
 }
 
+// NewHTTPObserver создает новый HTTPObserver и запускает фоновый воркер для отправки событий
 func NewHTTPObserver(url string) *HTTPObserver {
 	obs := &HTTPObserver{
 		url:    url,
@@ -27,6 +29,7 @@ func NewHTTPObserver(url string) *HTTPObserver {
 	return obs
 }
 
+// worker читает события из канала и отправляет их на HTTP endpoint
 func (ho *HTTPObserver) worker() {
 	defer ho.wg.Done()
 	for event := range ho.ch {
@@ -47,6 +50,7 @@ func (ho *HTTPObserver) worker() {
 	}
 }
 
+// Update помещает событие в канал для асинхронной отправки. Если канал переполнен, событие отбрасывается
 func (ho *HTTPObserver) Update(ctx context.Context, event Event) {
 	select {
 	case ho.ch <- event:
@@ -55,8 +59,9 @@ func (ho *HTTPObserver) Update(ctx context.Context, event Event) {
 	}
 }
 
+// Close закрывает канал и ожидает завершения отправки всех накопленных событий
 func (ho *HTTPObserver) Close() error {
 	close(ho.ch)
-	ho.wg.Wait() // Ждём, пока все события из канала будут отправлены
+	ho.wg.Wait()
 	return nil
 }

@@ -14,10 +14,12 @@ import (
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
+// PostgresStorage реализует интерфейс URLStore, используя PostgreSQL в качестве хранилища
 type PostgresStorage struct {
 	db *sql.DB
 }
 
+// NewPostgresStorage подключается к БД, применяет миграции и возвращает экземпляр PostgresStorage
 func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 	ctx := context.Background()
 	cfg, err := pgx.ParseConfig(dsn)
@@ -39,15 +41,18 @@ func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 	return &PostgresStorage{db: db}, nil
 }
 
+// Ping проверяет доступность базы данных
 func (p *PostgresStorage) Ping(ctx context.Context) error {
 	return p.db.PingContext(ctx)
 }
 
+// Close закрывает соединение с базой данных
 func (p *PostgresStorage) Close(ctx context.Context) error {
 	_ = ctx
 	return p.db.Close()
 }
 
+// Set сохраняет пару shortURL и longURL для пользователя userID
 func (p *PostgresStorage) Set(ctx context.Context, userID, shortURL, longURL string) (string, bool, error) {
 	query := `
 		INSERT INTO short_urls (short_url, original_url, user_id)
@@ -64,6 +69,7 @@ func (p *PostgresStorage) Set(ctx context.Context, userID, shortURL, longURL str
 	return storedShortURL, storedShortURL == shortURL, nil
 }
 
+// SetBatch сохраняет набор пар URL для пользователя userID в рамках одной транзакции
 func (p *PostgresStorage) SetBatch(ctx context.Context, userID string, pairs []model.URLPair) ([]model.URLPair, error) {
 	if len(pairs) == 0 {
 		return nil, nil
@@ -106,6 +112,7 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, userID string, pairs []m
 	return results, nil
 }
 
+// Get возвращает оригинальный URL и статусы существования,удаления по короткому URL
 func (p *PostgresStorage) Get(ctx context.Context, shortURL string) (string, bool, bool, error) {
 	query := `SELECT original_url, is_deleted FROM short_urls WHERE short_url = $1`
 
@@ -156,6 +163,7 @@ func runMigrations(dsn string) error {
 	return nil
 }
 
+// GetUserURLs возвращает все URL, принадлежащие пользователю userID
 func (p *PostgresStorage) GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error) {
 	query := `SELECT short_url, original_url FROM short_urls WHERE user_id = $1 AND is_deleted = false`
 
@@ -181,6 +189,7 @@ func (p *PostgresStorage) GetUserURLs(ctx context.Context, userID string) ([]mod
 	return urls, nil
 }
 
+// DeleteBatch помечает указанные URL как удаленные для пользователя userID
 func (p *PostgresStorage) DeleteBatch(ctx context.Context, userID string, ids []string) error {
 	query := `
 		UPDATE short_urls 

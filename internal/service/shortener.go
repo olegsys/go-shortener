@@ -11,6 +11,7 @@ import (
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
+// URLStore описывает интерфейс хранилища для работы с URL
 type URLStore interface {
 	Set(ctx context.Context, userID, shortURL, longURL string) (string, bool, error)
 	SetBatch(ctx context.Context, userID string, pairs []model.URLPair) ([]model.URLPair, error)
@@ -19,11 +20,13 @@ type URLStore interface {
 	DeleteBatch(ctx context.Context, userID string, ids []string) error
 }
 
+// ShortenerService содержит бизнес-логику сервиса сокращения URL
 type ShortenerService struct {
 	storage URLStore
 	baseURL string
 }
 
+// NewShortenerService создает и инициализирует новый экземпляр ShortenerService
 func NewShortenerService(storage URLStore, baseURL string) *ShortenerService {
 	return &ShortenerService{
 		storage: storage,
@@ -31,6 +34,7 @@ func NewShortenerService(storage URLStore, baseURL string) *ShortenerService {
 	}
 }
 
+// Shorten генерирует короткий URL для переданного longURL
 func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string, bool, error) {
 	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 	const maxRetries = 10
@@ -61,6 +65,7 @@ func (s *ShortenerService) Shorten(ctx context.Context, longURL string) (string,
 	return strings.TrimSuffix(s.baseURL, "/") + "/" + storedShortURL, !created, nil
 }
 
+// ShortenBatch генерирует короткие URL для батча оригинальных URL
 func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error) {
 	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
@@ -89,6 +94,7 @@ func (s *ShortenerService) ShortenBatch(ctx context.Context, items []model.Short
 	return results, nil
 }
 
+// Resolve возвращает оригинальный URL по его короткому идентификатору
 func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string, bool, bool, error) {
 	longURL, exists, isDeleted, err := s.storage.Get(ctx, shortURL)
 	if err != nil {
@@ -97,6 +103,7 @@ func (s *ShortenerService) Resolve(ctx context.Context, shortURL string) (string
 	return longURL, exists, isDeleted, nil
 }
 
+// GetUserURLs возвращает все URL, принадлежащие текущему пользователю из контекста
 func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, error) {
 	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 	urls, err := s.storage.GetUserURLs(ctx, userID)
@@ -115,6 +122,7 @@ func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, er
 	return results, nil
 }
 
+// DeleteURLs помечает указанные URL как удаленные
 func (s *ShortenerService) DeleteURLs(ctx context.Context, userID string, ids []string) error {
 	return s.storage.DeleteBatch(ctx, userID, ids)
 }

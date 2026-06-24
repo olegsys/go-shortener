@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Deleter описывает интерфейс для удаления URL
 type Deleter interface {
 	DeleteURLs(ctx context.Context, userID string, ids []string) error
 }
@@ -17,6 +18,7 @@ type deleteTask struct {
 	shortID string
 }
 
+// DeletionService асинхронно обрабатывает запросы на удаление URL, группируя их в набор
 type DeletionService struct {
 	deleter Deleter
 	ch      chan deleteTask
@@ -26,6 +28,7 @@ type DeletionService struct {
 	wg      sync.WaitGroup
 }
 
+// NewDeletionService создает и запускает фоновый worker DeletionService
 func NewDeletionService(deleter Deleter) *DeletionService {
 	ctx, cancel := context.WithCancel(context.Background())
 	ds := &DeletionService{
@@ -38,6 +41,7 @@ func NewDeletionService(deleter Deleter) *DeletionService {
 	return ds
 }
 
+// Enqueue добавляет задачу на удаление URL в очередь
 func (ds *DeletionService) Enqueue(userID, shortID string) error {
 	if ds.stopped.Load() {
 		return fmt.Errorf("deletion service is shutting down")
@@ -46,6 +50,7 @@ func (ds *DeletionService) Enqueue(userID, shortID string) error {
 	return nil
 }
 
+// Shutdown останавливает worker и дожидается обработки оставшихся задач
 func (ds *DeletionService) Shutdown() {
 	ds.stopped.Store(true)
 	ds.cancel()
@@ -53,6 +58,7 @@ func (ds *DeletionService) Shutdown() {
 	ds.wg.Wait()
 }
 
+// runWorker читает задачи из канала и отправляет их на удаление наборами
 func (ds *DeletionService) runWorker(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -86,6 +92,7 @@ func (ds *DeletionService) runWorker(ctx context.Context) {
 	}
 }
 
+// flush группирует задачи по userID и отправляет их на удаление
 func (ds *DeletionService) flush(tasks []deleteTask) {
 	groups := make(map[string][]string)
 	for _, t := range tasks {

@@ -13,6 +13,7 @@ import (
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
+// Shortener описывает интерфейс сервиса сокращения URL, используемый хендлерами
 type Shortener interface {
 	Shorten(ctx context.Context, longURL string) (string, bool, error)
 	ShortenBatch(ctx context.Context, items []model.ShortenBatchItem) ([]model.ShortenBatchResult, error)
@@ -31,16 +32,19 @@ type resp struct {
 	Result string `json:"result"`
 }
 
+// Auditor описывает интерфейс для публикации событий аудита
 type Auditor interface {
 	Publish(ctx context.Context, event audit.Event)
 }
 
+// Handler группирует HTTP-хендлеры сервиса сокращения URL
 type Handler struct {
 	shortener   Shortener
 	deletionSvc deletionService
 	auditor     Auditor
 }
 
+// NewHandler создает новый экземпляр Handler с заданными зависимостями
 func NewHandler(shortener Shortener, deletionSvc deletionService, auditor Auditor) *Handler {
 	return &Handler{
 		shortener:   shortener,
@@ -49,6 +53,8 @@ func NewHandler(shortener Shortener, deletionSvc deletionService, auditor Audito
 	}
 }
 
+// Shorten обрабатывает POST-запросы на корневой путь "/"
+// Принимает оригинальный URL в теле запроса в формате text/plain
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "text/plain" {
 		http.Error(w, "Content-Type must be text/plain", http.StatusBadRequest)
@@ -91,6 +97,8 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ShortenJson обрабатывает POST-запросы на "/api/shorten"
+// Принимает JSON вида {"url": "..."}
 func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
@@ -134,6 +142,8 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ShortenBatchJson обрабатывает POST-запросы на "/api/shorten/batch"
+// Принимает массив JSON-объектов для пакетного сокращения
 func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
@@ -169,6 +179,8 @@ func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Redirect обрабатывает GET-запросы на "/{id}"
+// Выполняет HTTP-редирект на оригинальный URL
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	shortURL := chi.URLParam(r, "id")
 	longURL, exists, isDeleted, err := h.shortener.Resolve(r.Context(), shortURL)
@@ -199,6 +211,8 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
+// GetUserURLs обрабатывает GET-запросы на "/api/user/urls"
+// Возвращает все URL текущего пользователя
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -225,6 +239,8 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteURLs обрабатывает DELETE-запросы на "/api/user/urls"
+// Помечает указанные URL как удаленные
 func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {

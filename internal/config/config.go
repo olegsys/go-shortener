@@ -5,6 +5,7 @@ import (
 	"os"
 )
 
+// Config содержит все конфигурационные параметры приложения, загружаемые из флагов и переменных окружения
 type Config struct {
 	ListenAddress string
 	BaseURL       string
@@ -15,6 +16,7 @@ type Config struct {
 	AuditURL      string
 }
 
+// LoadConfig загружает конфигурацию. Приоритет имеют переменные окружения, затем флаги командной строки
 func LoadConfig() *Config {
 	cfg := &Config{}
 	flag.StringVar(&cfg.ListenAddress, "a", ":8080", "address")
