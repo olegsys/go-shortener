@@ -1,3 +1,4 @@
+// Package audit реализует систему аудита действий пользователей
 package audit
 
 import (
@@ -50,6 +51,6 @@ func (eb *EventBus) Close() {
 	eb.mu.RLock()
 	defer eb.mu.RUnlock()
 	for _, obs := range eb.observers {
-		obs.Close()
+		_ = obs.Close()
 	}
 }

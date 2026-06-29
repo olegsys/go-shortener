@@ -1,3 +1,4 @@
+// Package handler реализует HTTP-обработчики запросов
 package handler
 
 import (
@@ -76,7 +77,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	h.auditor.Publish(r.Context(), audit.Event{
-		Ts:     time.Now().Unix(),
+		TS:     time.Now().Unix(),
 		Action: "shorten",
 		UserID: userID,
 		URL:    sourceURL,
@@ -94,9 +95,9 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ShortenJson обрабатывает POST-запросы на "/api/shorten"
+// ShortenJSON обрабатывает POST-запросы на "/api/shorten"
 // Принимает JSON вида {"url": "..."}
-func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ShortenJSON(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
@@ -118,7 +119,7 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	h.auditor.Publish(r.Context(), audit.Event{
-		Ts:     time.Now().Unix(),
+		TS:     time.Now().Unix(),
 		Action: "shorten",
 		UserID: userID,
 		URL:    req.URL,
@@ -137,9 +138,9 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ShortenBatchJson обрабатывает POST-запросы на "/api/shorten/batch"
+// ShortenBatchJSON обрабатывает POST-запросы на "/api/shorten/batch"
 // Принимает массив JSON-объектов для пакетного сокращения
-func (h *Handler) ShortenBatchJson(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ShortenBatchJSON(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
@@ -194,7 +195,7 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
 	h.auditor.Publish(r.Context(), audit.Event{
-		Ts:     time.Now().Unix(),
+		TS:     time.Now().Unix(),
 		Action: "follow",
 		UserID: userID,
 		URL:    longURL,

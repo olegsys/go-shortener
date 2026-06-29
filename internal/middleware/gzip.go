@@ -15,7 +15,7 @@ func DecompressMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "Error decompressing body", http.StatusBadRequest)
 				return
 			}
-			defer gz.Close()
+			defer func() { _ = gz.Close() }()
 			r.Body = gz
 		}
 		next.ServeHTTP(w, r)

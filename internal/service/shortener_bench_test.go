@@ -46,7 +46,7 @@ func BenchmarkResolve(b *testing.B) {
 	ctx := context.Background()
 
 	id := "testid12"
-	storage.Set(ctx, "user1", id, "https://example.com")
+	_, _, _ = storage.Set(ctx, "user1", id, "https://example.com")
 
 	b.ResetTimer()
 	b.ReportAllocs()

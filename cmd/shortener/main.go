@@ -27,7 +27,7 @@ func main() {
 	if err != nil {
 		panic("cannot initialize zap")
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	var dbStorage *repository.PostgresStorage
 	var mapStorage *repository.MapStorage
@@ -36,7 +36,7 @@ func main() {
 	if cfg.DatabaseDSN != "" {
 		dbStorage, err = repository.NewPostgresStorage(cfg.DatabaseDSN)
 		if err != nil {
-			logger.Fatal("Failed to connect to database",
+			logger.Panic("Failed to connect to database",
 				zap.Error(err),
 			)
 		}
@@ -95,8 +95,8 @@ func main() {
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
 	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
-	router.Post("/api/shorten", urlHandler.ShortenJson)
-	router.Post("/api/shorten/batch", urlHandler.ShortenBatchJson)
+	router.Post("/api/shorten", urlHandler.ShortenJSON)
+	router.Post("/api/shorten/batch", urlHandler.ShortenBatchJSON)
 	router.Get("/{id}", urlHandler.Redirect)
 	router.Get("/api/user/urls", urlHandler.GetUserURLs)
 	router.Get("/ping", pingHandler.Ping)
@@ -120,7 +120,7 @@ func main() {
 			zap.String("Base URL:", cfg.BaseURL),
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Server listen failed",
+			logger.Panic("Server listen failed",
 				zap.Error(err),
 			)
 		}
@@ -141,7 +141,7 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Graceful shutdown failed", zap.Error(err))
-		srv.Close()
+		_ = srv.Close()
 	}
 
 	if mapStorage != nil {

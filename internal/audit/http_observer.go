@@ -45,7 +45,7 @@ func (ho *HTTPObserver) worker() {
 
 		resp, err := ho.client.Do(req)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 }

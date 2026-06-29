@@ -92,7 +92,7 @@ func TestHandler_Shorten(t *testing.T) {
 
 			router.ServeHTTP(w, r)
 			res := w.Result()
-			defer res.Body.Close()
+			defer func() { _ = res.Body.Close() }()
 			shortURL, err := io.ReadAll(res.Body)
 			assert.NoError(t, err)
 
@@ -154,7 +154,7 @@ func TestHandler_Redirect(t *testing.T) {
 
 			router.ServeHTTP(w, r)
 			res := w.Result()
-			defer res.Body.Close()
+			defer func() { _ = res.Body.Close() }()
 
 			assert.Equal(t, tt.wantStatus, res.StatusCode)
 			if tt.wantLocation != "" {
@@ -171,7 +171,7 @@ func TestHandler_ShortenJson(t *testing.T) {
 	h := NewHandler(svc, &mockDeletionService{}, nil)
 
 	router := chi.NewRouter()
-	router.Post("/api/shorten", h.ShortenJson)
+	router.Post("/api/shorten", h.ShortenJSON)
 
 	tests := []struct {
 		name             string
@@ -237,7 +237,7 @@ func TestHandler_ShortenJson(t *testing.T) {
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, r)
 			res := w.Result()
-			defer res.Body.Close()
+			defer func() { _ = res.Body.Close() }()
 			shortURL, err := io.ReadAll(res.Body)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedResponse.httpCode, res.StatusCode)
@@ -257,7 +257,7 @@ func TestHandler_ShortenBatchJson(t *testing.T) {
 	h := NewHandler(svc, &mockDeletionService{}, nil)
 
 	router := chi.NewRouter()
-	router.Post("/api/shorten/batch", h.ShortenBatchJson)
+	router.Post("/api/shorten/batch", h.ShortenBatchJSON)
 
 	tests := []struct {
 		name        string
@@ -303,7 +303,7 @@ func TestHandler_ShortenBatchJson(t *testing.T) {
 
 			router.ServeHTTP(w, r)
 			res := w.Result()
-			defer res.Body.Close()
+			defer func() { _ = res.Body.Close() }()
 
 			assert.Equal(t, tt.wantStatus, res.StatusCode)
 
@@ -360,7 +360,7 @@ func TestHandler_ShortenJSON_DuplicateReturnsExistingURL(t *testing.T) {
 	h := NewHandler(svc, &mockDeletionService{}, nil)
 
 	router := chi.NewRouter()
-	router.Post("/api/shorten", h.ShortenJson)
+	router.Post("/api/shorten", h.ShortenJSON)
 
 	firstReq := httptest.NewRequest(http.MethodPost, "http://localhost:8080/api/shorten", strings.NewReader(`{"url":"https://example.com"}`))
 	firstReq.Header.Set("Content-Type", "application/json")
@@ -440,7 +440,7 @@ func TestHandler_GetUserURLs(t *testing.T) {
 
 			router.ServeHTTP(w, r)
 			res := w.Result()
-			defer res.Body.Close()
+			defer func() { _ = res.Body.Close() }()
 
 			assert.Equal(t, tt.wantStatus, res.StatusCode)
 

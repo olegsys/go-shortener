@@ -34,7 +34,7 @@ func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
 	db := stdlib.OpenDB(*cfg)
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("unable to ping database: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, userID string, pairs []m
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO short_urls (short_url, original_url, user_id)
@@ -91,7 +91,7 @@ func (p *PostgresStorage) SetBatch(ctx context.Context, userID string, pairs []m
 	if err != nil {
 		return nil, err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	results := make([]model.URLPair, len(pairs))
 	for i, pair := range pairs {
@@ -137,7 +137,7 @@ func runMigrations(dsn string) error {
 	}
 
 	migrationDB := stdlib.OpenDB(*cfg)
-	defer migrationDB.Close()
+	defer func() { _ = migrationDB.Close() }()
 
 	if err := migrationDB.Ping(); err != nil {
 		return fmt.Errorf("ping migration database: %w", err)
@@ -171,7 +171,7 @@ func (p *PostgresStorage) GetUserURLs(ctx context.Context, userID string) ([]mod
 	if err != nil {
 		return nil, fmt.Errorf("select user urls: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var urls []model.URLPair
 	for rows.Next() {

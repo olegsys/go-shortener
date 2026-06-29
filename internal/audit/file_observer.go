@@ -41,8 +41,8 @@ func (fo *FileObserver) worker() {
 		if err != nil {
 			continue
 		}
-		fo.file.Write(data)
-		fo.file.Write([]byte("\n"))
+		_, _ = fo.file.Write(data)
+		_, _ = fo.file.Write([]byte("\n"))
 	}
 }
 
