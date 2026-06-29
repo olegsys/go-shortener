@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+// Auditor - интерфейс для публикации событий
+type Auditor interface {
+	Publish(ctx context.Context, event Event)
+}
+
 // Observer - интерфейс для всех приёмников событий аудита
 type Observer interface {
 	Update(ctx context.Context, event Event)

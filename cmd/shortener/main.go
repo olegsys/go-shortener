@@ -59,23 +59,34 @@ func main() {
 	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
 	deletionSvc := service.NewDeletionService(shortenerService)
 
-	auditBus := audit.NewEventBus()
-	if cfg.AuditFile != "" {
-		fileObs, err := audit.NewFileObserver(cfg.AuditFile)
-		if err != nil {
-			logger.Error("Failed to init file audit observer", zap.Error(err))
-		} else {
-			auditBus.Register(fileObs)
-			logger.Info("File audit observer enabled", zap.String("path", cfg.AuditFile))
+	var auditor audit.Auditor
+	var auditBus *audit.EventBus
+
+	if cfg.AuditFile != "" || cfg.AuditURL != "" {
+		auditBus = audit.NewEventBus()
+
+		if cfg.AuditFile != "" {
+			fileObs, err := audit.NewFileObserver(cfg.AuditFile)
+			if err != nil {
+				logger.Error("Failed to init file audit observer", zap.Error(err))
+			} else {
+				auditBus.Register(fileObs)
+				logger.Info("File audit observer enabled", zap.String("path", cfg.AuditFile))
+			}
 		}
-	}
-	if cfg.AuditURL != "" {
-		httpObs := audit.NewHTTPObserver(cfg.AuditURL)
-		auditBus.Register(httpObs)
-		logger.Info("HTTP audit observer enabled", zap.String("url", cfg.AuditURL))
+		if cfg.AuditURL != "" {
+			httpObs := audit.NewHTTPObserver(cfg.AuditURL)
+			auditBus.Register(httpObs)
+			logger.Info("HTTP audit observer enabled", zap.String("url", cfg.AuditURL))
+		}
+
+		auditor = auditBus
+	} else {
+		auditor = &audit.NoopAuditor{}
+		logger.Info("Audit is disabled, using NoopAuditor")
 	}
 
-	urlHandler := handler.NewHandler(shortenerService, deletionSvc, auditBus)
+	urlHandler := handler.NewHandler(shortenerService, deletionSvc, auditor)
 	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
 
@@ -120,7 +131,9 @@ func main() {
 	<-stop
 	logger.Info("Shutdown signal received")
 
-	auditBus.Close()
+	if auditBus != nil {
+		auditBus.Close()
+	}
 
 	deletionSvc.Shutdown()
 
