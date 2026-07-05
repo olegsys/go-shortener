@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/olegsys/go-shortener/internal/audit"
 	"github.com/olegsys/go-shortener/internal/config"
 	"github.com/olegsys/go-shortener/internal/handler"
 	"github.com/olegsys/go-shortener/internal/middleware"
@@ -55,7 +56,24 @@ func main() {
 
 	shortenerService := service.NewShortenerService(storage, cfg.BaseURL)
 	deletionSvc := service.NewDeletionService(shortenerService)
-	urlHandler := handler.NewHandler(shortenerService, deletionSvc)
+
+	auditBus := audit.NewEventBus()
+	if cfg.AuditFile != "" {
+		fileObs, err := audit.NewFileObserver(cfg.AuditFile)
+		if err != nil {
+			logger.Error("Failed to init file audit observer", zap.Error(err))
+		} else {
+			auditBus.Register(fileObs)
+			logger.Info("File audit observer enabled", zap.String("path", cfg.AuditFile))
+		}
+	}
+	if cfg.AuditURL != "" {
+		httpObs := audit.NewHTTPObserver(cfg.AuditURL)
+		auditBus.Register(httpObs)
+		logger.Info("HTTP audit observer enabled", zap.String("url", cfg.AuditURL))
+	}
+
+	urlHandler := handler.NewHandler(shortenerService, deletionSvc, auditBus)
 	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
 
@@ -91,6 +109,8 @@ func main() {
 
 	<-stop
 	logger.Info("Shutdown signal received")
+
+	auditBus.Close()
 
 	deletionSvc.Shutdown()
 

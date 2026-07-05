@@ -11,6 +11,8 @@ type Config struct {
 	StorageFile   string
 	DatabaseDSN   string
 	SecretKey     string
+	AuditFile     string
+	AuditURL      string
 }
 
 func LoadConfig() *Config {
@@ -20,6 +22,8 @@ func LoadConfig() *Config {
 	flag.StringVar(&cfg.StorageFile, "f", "", "storage file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database dsn")
 	flag.StringVar(&cfg.SecretKey, "s", "secret_key", "cookie secret key")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit file path")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote url")
 	flag.Parse()
 	if val := os.Getenv("SERVER_ADDRESS"); val != "" {
 		cfg.ListenAddress = val
