@@ -32,20 +32,18 @@ type resp struct {
 	Result string `json:"result"`
 }
 
-// Auditor описывает интерфейс для публикации событий аудита
-type Auditor interface {
-	Publish(ctx context.Context, event audit.Event)
-}
-
 // Handler группирует HTTP-хендлеры сервиса сокращения URL
 type Handler struct {
 	shortener   Shortener
 	deletionSvc deletionService
-	auditor     Auditor
+	auditor     audit.Auditor
 }
 
 // NewHandler создает новый экземпляр Handler с заданными зависимостями
-func NewHandler(shortener Shortener, deletionSvc deletionService, auditor Auditor) *Handler {
+func NewHandler(shortener Shortener, deletionSvc deletionService, auditor audit.Auditor) *Handler {
+	if auditor == nil {
+		auditor = &audit.NoopAuditor{}
+	}
 	return &Handler{
 		shortener:   shortener,
 		deletionSvc: deletionSvc,
@@ -76,15 +74,14 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.auditor != nil {
-		userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-		h.auditor.Publish(r.Context(), audit.Event{
-			Ts:     time.Now().Unix(),
-			Action: "shorten",
-			UserID: userID,
-			URL:    sourceURL,
-		})
-	}
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	h.auditor.Publish(r.Context(), audit.Event{
+		Ts:     time.Now().Unix(),
+		Action: "shorten",
+		UserID: userID,
+		URL:    sourceURL,
+	})
+
 	w.Header().Set("Content-Type", "text/plain")
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
@@ -119,15 +116,13 @@ func (h *Handler) ShortenJson(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.auditor != nil {
-		userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-		h.auditor.Publish(r.Context(), audit.Event{
-			Ts:     time.Now().Unix(),
-			Action: "shorten",
-			UserID: userID,
-			URL:    req.URL,
-		})
-	}
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	h.auditor.Publish(r.Context(), audit.Event{
+		Ts:     time.Now().Unix(),
+		Action: "shorten",
+		UserID: userID,
+		URL:    req.URL,
+	})
 
 	res := resp{Result: shortURL}
 	w.Header().Set("Content-Type", "application/json")
@@ -197,15 +192,13 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.auditor != nil {
-		userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-		h.auditor.Publish(r.Context(), audit.Event{
-			Ts:     time.Now().Unix(),
-			Action: "follow",
-			UserID: userID,
-			URL:    longURL,
-		})
-	}
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	h.auditor.Publish(r.Context(), audit.Event{
+		Ts:     time.Now().Unix(),
+		Action: "follow",
+		UserID: userID,
+		URL:    longURL,
+	})
 
 	w.Header().Set("Location", longURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
