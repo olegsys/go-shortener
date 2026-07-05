@@ -10,6 +10,7 @@ import (
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
+// Record представляет собой одну запись в хранилище URL
 type Record struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
@@ -21,12 +22,15 @@ type userURLKey struct {
 	userID  string
 	longURL string
 }
+
+// MapStorage реализует интерфейс URLStore, храня данные в оперативной памяти с возможностью сохранения в файл
 type MapStorage struct {
 	data     map[string]Record
 	urlIndex map[userURLKey]string
 	mutex    sync.RWMutex
 }
 
+// NewMapStorage создает и инициализирует новое in-memory хранилище
 func NewMapStorage() *MapStorage {
 	return &MapStorage{
 		data:     make(map[string]Record),
@@ -34,6 +38,7 @@ func NewMapStorage() *MapStorage {
 	}
 }
 
+// Set сохраняет пару shortURL и longURL для пользователя userID
 func (m *MapStorage) Set(ctx context.Context, userID, shortURL, longURL string) (string, bool, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -58,6 +63,7 @@ func (m *MapStorage) Set(ctx context.Context, userID, shortURL, longURL string) 
 	return shortURL, true, nil
 }
 
+// SetBatch сохраняет набор пар URL для пользователя userID
 func (m *MapStorage) SetBatch(ctx context.Context, userID string, pairs []model.URLPair) ([]model.URLPair, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -92,6 +98,7 @@ func (m *MapStorage) SetBatch(ctx context.Context, userID string, pairs []model.
 	return results, nil
 }
 
+// Get возвращает оригинальный URL и статусы существования,удаления по короткому URL
 func (m *MapStorage) Get(ctx context.Context, s string) (string, bool, bool, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
@@ -103,6 +110,7 @@ func (m *MapStorage) Get(ctx context.Context, s string) (string, bool, bool, err
 	return record.OriginalURL, exist, record.IsDeleted, nil
 }
 
+// LoadFromFile загружает данные хранилища из JSON-файла
 func (m *MapStorage) LoadFromFile(filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -128,6 +136,7 @@ func (m *MapStorage) LoadFromFile(filePath string) error {
 	return nil
 }
 
+// SaveToFile сохраняет текущее состояние хранилища в JSON-файл
 func (m *MapStorage) SaveToFile(filePath string) error {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
@@ -145,6 +154,7 @@ func (m *MapStorage) SaveToFile(filePath string) error {
 	return os.WriteFile(filePath, data, 0644)
 }
 
+// GetUserURLs возвращает все URL, принадлежащие пользователю userID
 func (m *MapStorage) GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
@@ -161,6 +171,7 @@ func (m *MapStorage) GetUserURLs(ctx context.Context, userID string) ([]model.UR
 	return urls, nil
 }
 
+// DeleteBatch помечает указанные URL как удаленные для пользователя userID
 func (m *MapStorage) DeleteBatch(ctx context.Context, userID string, ids []string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()

@@ -1,6 +1,6 @@
 package audit
 
-// Event событие аудита
+// Event представляет собой событие аудита для логирования действий пользователей
 type Event struct {
 	Ts     int64  `json:"ts"`
 	Action string `json:"action"`

@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// DecompressMiddleware распаковывает тело запроса, если оно сжато с помощью gzip
 func DecompressMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {

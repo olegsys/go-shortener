@@ -13,12 +13,15 @@ import (
 
 type ctxKey string
 
+// UserIDKey используется как ключ в контексте запроса для хранения идентификатора пользователя
 const UserIDKey ctxKey = "userID"
 
 type AuthConfig struct {
 	SecretKey string
 }
 
+// AuthMiddleware возвращает middleware, который извлекает или создает идентификатор пользователя
+// Идентификатор хранится в cookie и подписывается HMAC-SHA256 для предотвращения компрометации
 func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
 	key := []byte(secretKey)
 	return func(next http.Handler) http.Handler {
