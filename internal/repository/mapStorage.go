@@ -7,27 +7,30 @@ import (
 	"os"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/olegsys/go-shortener/internal/model"
 )
 
 type Record struct {
-	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
 	UserID      string `json:"user_id"`
 	IsDeleted   bool   `json:"is_deleted"`
 }
+
+type userURLKey struct {
+	userID  string
+	longURL string
+}
 type MapStorage struct {
 	data     map[string]Record
-	urlIndex map[string]map[string]string
+	urlIndex map[userURLKey]string
 	mutex    sync.RWMutex
 }
 
 func NewMapStorage() *MapStorage {
 	return &MapStorage{
 		data:     make(map[string]Record),
-		urlIndex: make(map[string]map[string]string),
+		urlIndex: make(map[userURLKey]string),
 	}
 }
 
@@ -39,25 +42,18 @@ func (m *MapStorage) Set(ctx context.Context, userID, shortURL, longURL string) 
 		return "", false, errors.New("short URL already exists")
 	}
 
-	userMap, ok := m.urlIndex[userID]
-	if !ok {
-		userMap = make(map[string]string)
-		m.urlIndex[userID] = userMap
-	}
-
-	if existingShortURL, ok := userMap[longURL]; ok {
+	key := userURLKey{userID: userID, longURL: longURL}
+	if existingShortURL, ok := m.urlIndex[key]; ok {
 		return existingShortURL, false, nil
 	}
 
-	id := uuid.New()
 	m.data[shortURL] = Record{
-		UUID:        id.String(),
 		ShortURL:    shortURL,
 		OriginalURL: longURL,
 		UserID:      userID,
 		IsDeleted:   false,
 	}
-	userMap[longURL] = shortURL
+	m.urlIndex[key] = shortURL
 
 	return shortURL, true, nil
 }
@@ -68,12 +64,6 @@ func (m *MapStorage) SetBatch(ctx context.Context, userID string, pairs []model.
 
 	results := make([]model.URLPair, len(pairs))
 
-	userMap, ok := m.urlIndex[userID]
-	if !ok {
-		userMap = make(map[string]string)
-		m.urlIndex[userID] = userMap
-	}
-
 	for i, pair := range pairs {
 		shortURL := pair.ShortURL
 		longURL := pair.LongURL
@@ -82,28 +72,21 @@ func (m *MapStorage) SetBatch(ctx context.Context, userID string, pairs []model.
 			return nil, errors.New("short URL already exists: " + shortURL)
 		}
 
-		if existingShortID, ok := userMap[longURL]; ok {
-			results[i] = model.URLPair{
-				ShortURL: existingShortID,
-				LongURL:  longURL,
-			}
+		key := userURLKey{userID: userID, longURL: longURL}
+		if existingShortID, ok := m.urlIndex[key]; ok {
+			results[i] = model.URLPair{ShortURL: existingShortID, LongURL: longURL}
 			continue
 		}
 
-		id := uuid.New()
 		m.data[shortURL] = Record{
-			UUID:        id.String(),
 			ShortURL:    shortURL,
 			OriginalURL: longURL,
 			UserID:      userID,
 			IsDeleted:   false,
 		}
-		userMap[longURL] = shortURL
+		m.urlIndex[key] = shortURL
 
-		results[i] = model.URLPair{
-			ShortURL: shortURL,
-			LongURL:  longURL,
-		}
+		results[i] = model.URLPair{ShortURL: shortURL, LongURL: longURL}
 	}
 
 	return results, nil
@@ -139,12 +122,8 @@ func (m *MapStorage) LoadFromFile(filePath string) error {
 	defer m.mutex.Unlock()
 	for _, rec := range records {
 		m.data[rec.ShortURL] = rec
-		userMap, ok := m.urlIndex[rec.UserID]
-		if !ok {
-			userMap = make(map[string]string)
-			m.urlIndex[rec.UserID] = userMap
-		}
-		userMap[rec.OriginalURL] = rec.ShortURL
+		key := userURLKey{userID: rec.UserID, longURL: rec.OriginalURL}
+		m.urlIndex[key] = rec.ShortURL
 	}
 	return nil
 }

@@ -27,3 +27,5 @@ localtest.sh
 /localtest.ps1
 localtest.ps1
 storage.json
+profiles/base.pprof
+profiles/result.pprof
