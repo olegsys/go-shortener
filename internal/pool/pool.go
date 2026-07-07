@@ -4,15 +4,20 @@ import (
 	"sync"
 )
 
+// Resettable описывает поведение объекта, который умеет сбрасывать свое состояние.
+type Resettable interface {
+	Reset()
+}
+
 // Pool - generic-структура, представляющая собой пул объектов
 // Параметр T ограничен типами, которые реализуют метод Reset()
-type Pool[T interface{ Reset() }] struct {
+type Pool[T Resettable] struct {
 	items []T
 	mu    sync.Mutex
 }
 
 // New - конструктор структуры Pool
-func New[T interface{ Reset() }]() *Pool[T] {
+func New[T Resettable]() *Pool[T] {
 	return &Pool[T]{
 		items: make([]T, 0),
 	}

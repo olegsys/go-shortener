@@ -70,10 +70,7 @@ func main() {
 
 		for _, spec := range specs {
 			structType := spec.Type.(*ast.StructType)
-			receiverName := strings.ToLower(spec.Name.Name[:1])
-			if receiverName == "" {
-				receiverName = "x"
-			}
+			receiverName := generateReceiverName(spec.Name.Name, structType.Fields.List)
 
 			buf.WriteString(fmt.Sprintf("func (%s *%s) Reset() {\n", receiverName, spec.Name.Name))
 			buf.WriteString(fmt.Sprintf("    if %s == nil {\n        return\n    }\n\n", receiverName))
@@ -217,7 +214,7 @@ func genResetForType(expr string, t types.Type, resetable map[*types.Named]bool)
 			stmts = append(stmts, "        resetter.Reset()")
 			stmts = append(stmts, "    }")
 		} else {
-			inner := genResetForType("(*"+expr+")", elem, resetable)
+			inner := genResetForType("*"+expr, elem, resetable)
 			for _, s := range inner {
 				stmts = append(stmts, "    "+s)
 			}
@@ -240,4 +237,71 @@ func genResetForType(expr string, t types.Type, resetable map[*types.Named]bool)
 		stmts = append(stmts, fmt.Sprintf("%s = nil", expr))
 	}
 	return stmts
+}
+
+// generateReceiverName генерирует имя receiver'а для метода Reset.
+func generateReceiverName(typeName string, fields []*ast.Field) string {
+	lowerName := toLowerCamel(typeName)
+
+	var candidates []string
+	if len(lowerName) <= 15 {
+		candidates = append(candidates, lowerName)
+	}
+
+	// Добавляем короткие варианты как fallback (первые 3 буквы оригинального имени)
+	origLower := strings.ToLower(typeName)
+	for i := 1; i <= min(3, len(origLower)); i++ {
+		candidates = append(candidates, origLower[:i])
+	}
+
+	// Собираем имена всех полей для проверки конфликтов
+	fieldNames := extractFieldNames(fields)
+
+	// Ищем первого кандидата, который не конфликтует с полями
+	for _, c := range candidates {
+		if !fieldNames[c] {
+			return c
+		}
+	}
+
+	fallbacks := []string{"x", "y", "z", "rcv", "val", "obj", "receiver"}
+	for _, f := range fallbacks {
+		if !fieldNames[f] {
+			return f
+		}
+	}
+
+	return "receiver"
+}
+
+// toLowerCamel преобразует имя типа в lowerCamelCase.
+func toLowerCamel(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.ToLower(s[:1]) + s[1:]
+}
+
+// extractFieldNames собирает все имена полей структуры
+func extractFieldNames(fields []*ast.Field) map[string]bool {
+	names := make(map[string]bool)
+	for _, f := range fields {
+		if len(f.Names) > 0 {
+			for _, fName := range f.Names {
+				names[fName.Name] = true
+			}
+		} else {
+			switch t := f.Type.(type) {
+			case *ast.Ident:
+				names[t.Name] = true
+			case *ast.StarExpr:
+				if ident, ok := t.X.(*ast.Ident); ok {
+					names[ident.Name] = true
+				}
+			case *ast.SelectorExpr:
+				names[t.Sel.Name] = true
+			}
+		}
+	}
+	return names
 }
