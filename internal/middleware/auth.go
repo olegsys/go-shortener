@@ -1,3 +1,4 @@
+// Package middleware содержит HTTP-middleware для обработки запросов
 package middleware
 
 import (

@@ -31,7 +31,7 @@ func setupTestRouter() *chi.Mux {
 	})
 
 	router.Post("/", h.Shorten)
-	router.Post("/api/shorten", h.ShortenJson)
+	router.Post("/api/shorten", h.ShortenJSON)
 	router.Get("/{id}", h.Redirect)
 
 	return router
@@ -50,7 +50,7 @@ func ExampleHandler_Shorten() {
 	// Выполняем запрос
 	router.ServeHTTP(w, req)
 	res := w.Result()
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	// Выводим статус код для проверки в // Output:
 	fmt.Println(res.StatusCode)
@@ -59,7 +59,7 @@ func ExampleHandler_Shorten() {
 }
 
 // ExampleHandler_ShortenJson демонстрирует сокращение URL через POST /api/shorten с JSON.
-func ExampleHandler_ShortenJson() {
+func ExampleHandler_ShortenJSON() {
 	router := setupTestRouter()
 
 	// Создаем JSON запрос
@@ -70,7 +70,7 @@ func ExampleHandler_ShortenJson() {
 
 	router.ServeHTTP(w, req)
 	res := w.Result()
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	fmt.Println(res.StatusCode)
 	fmt.Println(res.Header.Get("Content-Type"))
@@ -85,7 +85,7 @@ func ExampleHandler_Redirect() {
 	// Сначала сохраним URL, чтобы было куда редиректить
 	storage := repository.NewMapStorage()
 	ctx := context.WithValue(context.Background(), middleware.UserIDKey, "example-user-id")
-	storage.Set(ctx, "example-user-id", "abc12345", "https://ya.ru")
+	_, _, _ = storage.Set(ctx, "example-user-id", "abc12345", "https://ya.ru")
 
 	svc := service.NewShortenerService(storage, "http://localhost:8080")
 	h := NewHandler(svc, &mockDeletionService{}, nil)
@@ -99,7 +99,7 @@ func ExampleHandler_Redirect() {
 
 	router.ServeHTTP(w, req)
 	res := w.Result()
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	fmt.Println(res.StatusCode)
 	fmt.Println(res.Header.Get("Location"))

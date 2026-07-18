@@ -1,3 +1,4 @@
+// Package repository предоставляет реализации хранилищ данных
 package repository
 
 import (
@@ -119,7 +120,7 @@ func (m *MapStorage) LoadFromFile(filePath string) error {
 		}
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var records []Record
 	if err := json.NewDecoder(file).Decode(&records); err != nil {
