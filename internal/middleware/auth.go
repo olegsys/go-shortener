@@ -23,7 +23,7 @@ type AuthConfig struct {
 
 // AuthMiddleware возвращает middleware, который извлекает или создает идентификатор пользователя
 // Идентификатор хранится в cookie и подписывается HMAC-SHA256 для предотвращения компрометации
-func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
+func AuthMiddleware(secretKey string, enableHTTPS bool) func(http.Handler) http.Handler {
 	key := []byte(secretKey)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +63,7 @@ func AuthMiddleware(secretKey string) func(http.Handler) http.Handler {
 					Value:    signedValue,
 					Path:     "/",
 					HttpOnly: true,
-					Secure:   true,
+					Secure:   enableHTTPS,
 				})
 			}
 
