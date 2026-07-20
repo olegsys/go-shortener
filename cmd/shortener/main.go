@@ -156,24 +156,29 @@ func main() {
 		}
 	}()
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	<-stop
 	logger.Info("Shutdown signal received")
 
-	if auditBus != nil {
-		auditBus.Close()
-	}
-
-	deletionSvc.Shutdown()
-
+	// останавливаем HTTP-сервер
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Graceful shutdown failed", zap.Error(err))
 		_ = srv.Close()
 	}
 
+	// останавливаем фоновый сервис удалений
+	deletionSvc.Shutdown()
+
+	// закрываем аудит
+	if auditBus != nil {
+		auditBus.Close()
+	}
+
+	// если используется файловое хранилище, то сохраняем его
 	if mapStorage != nil {
 		if err := mapStorage.SaveToFile(cfg.StorageFile); err != nil {
 			logger.Error("File with data not saved",
@@ -182,6 +187,7 @@ func main() {
 			)
 		}
 	}
+	// если используется PostgreSQL, то закрываем его
 	if dbStorage != nil {
 		if err := dbStorage.Close(ctx); err != nil {
 			logger.Error("Database close failed",
