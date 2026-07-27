@@ -143,8 +143,25 @@ func main() {
 		)
 		var err error
 		if cfg.EnableHTTPS {
-			// Запуск HTTPS сервера (требует файлы cert.pem и key.pem в рабочей директории)
-			err = srv.ListenAndServeTLS("cert.pem", "key.pem")
+			if cfg.CertFile == "" || cfg.KeyFile == "" {
+				logger.Panic("TLS enabled but certificate/key paths are not configured")
+			}
+
+			if _, statErr := os.Stat(cfg.CertFile); statErr != nil {
+				logger.Panic("TLS certificate file is not available",
+					zap.String("cert_file", cfg.CertFile),
+					zap.Error(statErr),
+				)
+			}
+
+			if _, statErr := os.Stat(cfg.KeyFile); statErr != nil {
+				logger.Panic("TLS private key file is not available",
+					zap.String("key_file", cfg.KeyFile),
+					zap.Error(statErr),
+				)
+			}
+
+			err = srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
 		} else {
 			err = srv.ListenAndServe()
 		}

@@ -19,6 +19,8 @@ type Config struct {
 	AuditURL      string
 	EnableHTTPS   bool
 	ConfigFile    string
+	CertFile      string
+	KeyFile       string
 }
 
 // fileConfig описывает структуру json файла конфигурации.
@@ -31,6 +33,8 @@ type fileConfig struct {
 	AuditFile   string `json:"audit_file"`
 	AuditURL    string `json:"audit_url"`
 	EnableHTTPS *bool  `json:"enable_https"`
+	CertFile    string `json:"cert_file"`
+	KeyFile     string `json:"key_file"`
 }
 
 // LoadConfig загружает конфигурацию. Приоритет имеют переменные окружения, затем флаги командной строки, затем json файл
@@ -45,6 +49,8 @@ func LoadConfig() *Config {
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote url")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
 	flag.StringVar(&cfg.ConfigFile, "c", "", "path to config file")
+	flag.StringVar(&cfg.CertFile, "cert-file", "cert.pem", "path to TLS certificate file")
+	flag.StringVar(&cfg.KeyFile, "key-file", "key.pem", "path to TLS private key file")
 	flag.Parse()
 
 	// Определяем, какие флаги были заданы
@@ -101,6 +107,12 @@ func applyFileConfig(cfg *Config, fc *fileConfig) {
 	if fc.EnableHTTPS != nil {
 		cfg.EnableHTTPS = *fc.EnableHTTPS
 	}
+	if fc.CertFile != "" {
+		cfg.CertFile = fc.CertFile
+	}
+	if fc.KeyFile != "" {
+		cfg.KeyFile = fc.KeyFile
+	}
 }
 
 // applyEnvConfig применяет значения из переменных окружения
@@ -125,8 +137,11 @@ func applyEnvConfig(cfg *Config) {
 			cfg.EnableHTTPS = b
 		}
 	}
-	if val := os.Getenv("CONFIG"); val != "" {
-		cfg.ConfigFile = val
+	if val := os.Getenv("CERT_FILE"); val != "" {
+		cfg.CertFile = val
+	}
+	if val := os.Getenv("KEY_FILE"); val != "" {
+		cfg.KeyFile = val
 	}
 }
 
@@ -161,5 +176,11 @@ func applyExplicitFlags(cfg *Config, explicit map[string]bool) {
 		if cfg.ConfigFile == "" {
 			cfg.ConfigFile = flag.Lookup("config").Value.String()
 		}
+	}
+	if explicit["cert-file"] {
+		cfg.CertFile = flag.Lookup("cert-file").Value.String()
+	}
+	if explicit["key-file"] {
+		cfg.KeyFile = flag.Lookup("key-file").Value.String()
 	}
 }
