@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -38,7 +39,7 @@ type fileConfig struct {
 }
 
 // LoadConfig загружает конфигурацию. Приоритет имеют переменные окружения, затем флаги командной строки, затем json файл
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	cfg := &Config{}
 	flag.StringVar(&cfg.ListenAddress, "a", ":8080", "address")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080/", "base url")
@@ -69,16 +70,19 @@ func LoadConfig() *Config {
 	if cfg.ConfigFile != "" {
 		data, err := os.ReadFile(cfg.ConfigFile)
 		if err != nil {
-			println("warning: cannot read config file:", err.Error())
-		} else if err := json.Unmarshal(data, &fc); err != nil {
-			println("warning: cannot parse config file:", err.Error())
+			return nil, fmt.Errorf("read config file %q: %w", cfg.ConfigFile, err)
+		}
+
+		if err := json.Unmarshal(data, &fc); err != nil {
+			return nil, fmt.Errorf("parse config file %q: %w", cfg.ConfigFile, err)
 		}
 	}
+
 	applyFileConfig(cfg, &fc)
 	applyEnvConfig(cfg)
 	applyExplicitFlags(cfg, explicitFlags)
 
-	return cfg
+	return cfg, nil
 }
 
 // applyFileConfig применяет значения из json файла конфигурации
@@ -173,9 +177,6 @@ func applyExplicitFlags(cfg *Config, explicit map[string]bool) {
 	}
 	if explicit["c"] {
 		cfg.ConfigFile = flag.Lookup("c").Value.String()
-		if cfg.ConfigFile == "" {
-			cfg.ConfigFile = flag.Lookup("config").Value.String()
-		}
 	}
 	if explicit["cert-file"] {
 		cfg.CertFile = flag.Lookup("cert-file").Value.String()

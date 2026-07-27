@@ -43,12 +43,16 @@ func main() {
 	fmt.Printf("Build date: %s\n", buildDate)
 	fmt.Printf("Build commit: %s\n", buildCommit)
 
-	cfg := config.LoadConfig()
 	logger, err := zap.NewProduction()
 	if err != nil {
 		panic("cannot initialize zap")
 	}
 	defer func() { _ = logger.Sync() }()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Fatal("failed to load config", zap.Error(err))
+	}
 
 	var dbStorage *repository.PostgresStorage
 	var mapStorage *repository.MapStorage
