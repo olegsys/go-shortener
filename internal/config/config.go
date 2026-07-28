@@ -4,6 +4,7 @@ package config
 import (
 	"flag"
 	"os"
+	"strconv"
 )
 
 // Config содержит все конфигурационные параметры приложения, загружаемые из флагов и переменных окружения
@@ -15,6 +16,7 @@ type Config struct {
 	SecretKey     string
 	AuditFile     string
 	AuditURL      string
+	EnableHTTPS   bool
 }
 
 // LoadConfig загружает конфигурацию. Приоритет имеют переменные окружения, затем флаги командной строки
@@ -24,9 +26,10 @@ func LoadConfig() *Config {
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080/", "base url")
 	flag.StringVar(&cfg.StorageFile, "f", "", "storage file")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "database dsn")
-	flag.StringVar(&cfg.SecretKey, "s", "secret_key", "cookie secret key")
+	flag.StringVar(&cfg.SecretKey, "secret", "secret_key", "cookie secret key")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "audit file path")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote url")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
 	flag.Parse()
 	if val := os.Getenv("SERVER_ADDRESS"); val != "" {
 		cfg.ListenAddress = val
@@ -42,6 +45,11 @@ func LoadConfig() *Config {
 	}
 	if val := os.Getenv("SECRET_KEY"); val != "" {
 		cfg.SecretKey = val
+	}
+	if val := os.Getenv("ENABLE_HTTPS"); val != "" {
+		if b, err := strconv.ParseBool(val); err == nil {
+			cfg.EnableHTTPS = b
+		}
 	}
 	return cfg
 }

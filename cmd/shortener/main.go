@@ -112,7 +112,7 @@ func main() {
 	router := chi.NewRouter()
 
 	router.Use(middleware.Logging(logger))
-	router.Use(middleware.AuthMiddleware(cfg.SecretKey))
+	router.Use(middleware.AuthMiddleware(cfg.SecretKey, cfg.EnableHTTPS))
 	router.Use(chimw.Compress(5, "application/json", "text/html"))
 	router.Use(middleware.DecompressMiddleware)
 	router.Post("/", urlHandler.Shorten)
@@ -139,8 +139,17 @@ func main() {
 		logger.Info("Server startup params",
 			zap.String("Listen on:", cfg.ListenAddress),
 			zap.String("Base URL:", cfg.BaseURL),
+			zap.Bool("HTTPS enabled:", cfg.EnableHTTPS),
 		)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		var err error
+		if cfg.EnableHTTPS {
+			// Запуск HTTPS сервера (требует файлы cert.pem и key.pem в рабочей директории)
+			err = srv.ListenAndServeTLS("cert.pem", "key.pem")
+		} else {
+			err = srv.ListenAndServe()
+		}
+
+		if err != nil && err != http.ErrServerClosed {
 			logger.Panic("Server listen failed",
 				zap.Error(err),
 			)
