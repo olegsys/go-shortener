@@ -43,12 +43,16 @@ func main() {
 	fmt.Printf("Build date: %s\n", buildDate)
 	fmt.Printf("Build commit: %s\n", buildCommit)
 
-	cfg := config.LoadConfig()
 	logger, err := zap.NewProduction()
 	if err != nil {
 		panic("cannot initialize zap")
 	}
 	defer func() { _ = logger.Sync() }()
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Fatal("failed to load config", zap.Error(err))
+	}
 
 	var dbStorage *repository.PostgresStorage
 	var mapStorage *repository.MapStorage
@@ -143,8 +147,25 @@ func main() {
 		)
 		var err error
 		if cfg.EnableHTTPS {
-			// Запуск HTTPS сервера (требует файлы cert.pem и key.pem в рабочей директории)
-			err = srv.ListenAndServeTLS("cert.pem", "key.pem")
+			if cfg.CertFile == "" || cfg.KeyFile == "" {
+				logger.Panic("TLS enabled but certificate/key paths are not configured")
+			}
+
+			if _, statErr := os.Stat(cfg.CertFile); statErr != nil {
+				logger.Panic("TLS certificate file is not available",
+					zap.String("cert_file", cfg.CertFile),
+					zap.Error(statErr),
+				)
+			}
+
+			if _, statErr := os.Stat(cfg.KeyFile); statErr != nil {
+				logger.Panic("TLS private key file is not available",
+					zap.String("key_file", cfg.KeyFile),
+					zap.Error(statErr),
+				)
+			}
+
+			err = srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
 		} else {
 			err = srv.ListenAndServe()
 		}
@@ -156,24 +177,29 @@ func main() {
 		}
 	}()
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	<-stop
 	logger.Info("Shutdown signal received")
 
-	if auditBus != nil {
-		auditBus.Close()
-	}
-
-	deletionSvc.Shutdown()
-
+	// останавливаем HTTP-сервер
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Graceful shutdown failed", zap.Error(err))
 		_ = srv.Close()
 	}
 
+	// останавливаем фоновый сервис удалений
+	deletionSvc.Shutdown()
+
+	// закрываем аудит
+	if auditBus != nil {
+		auditBus.Close()
+	}
+
+	// если используется файловое хранилище, то сохраняем его
 	if mapStorage != nil {
 		if err := mapStorage.SaveToFile(cfg.StorageFile); err != nil {
 			logger.Error("File with data not saved",
@@ -182,6 +208,7 @@ func main() {
 			)
 		}
 	}
+	// если используется PostgreSQL, то закрываем его
 	if dbStorage != nil {
 		if err := dbStorage.Close(ctx); err != nil {
 			logger.Error("Database close failed",

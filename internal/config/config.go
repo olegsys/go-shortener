@@ -4,6 +4,7 @@ package config
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -19,6 +20,8 @@ type Config struct {
 	AuditURL      string
 	EnableHTTPS   bool
 	ConfigFile    string
+	CertFile      string
+	KeyFile       string
 }
 
 // fileConfig описывает структуру json файла конфигурации.
@@ -31,10 +34,12 @@ type fileConfig struct {
 	AuditFile   string `json:"audit_file"`
 	AuditURL    string `json:"audit_url"`
 	EnableHTTPS *bool  `json:"enable_https"`
+	CertFile    string `json:"cert_file"`
+	KeyFile     string `json:"key_file"`
 }
 
 // LoadConfig загружает конфигурацию. Приоритет имеют переменные окружения, затем флаги командной строки, затем json файл
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	cfg := &Config{}
 	flag.StringVar(&cfg.ListenAddress, "a", ":8080", "address")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080/", "base url")
@@ -45,15 +50,17 @@ func LoadConfig() *Config {
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "audit remote url")
 	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
 	flag.StringVar(&cfg.ConfigFile, "c", "", "path to config file")
+	flag.StringVar(&cfg.CertFile, "cert-file", "cert.pem", "path to TLS certificate file")
+	flag.StringVar(&cfg.KeyFile, "key-file", "key.pem", "path to TLS private key file")
 	flag.Parse()
 
-	// Определяем, какие флаги были заданы
-	explicitFlags := make(map[string]bool)
+	var configFlagSet bool
 	flag.Visit(func(f *flag.Flag) {
-		explicitFlags[f.Name] = true
+		if f.Name == "c" {
+			configFlagSet = true
+		}
 	})
-
-	if !explicitFlags["c"] {
+	if !configFlagSet {
 		if envPath := os.Getenv("CONFIG"); envPath != "" {
 			cfg.ConfigFile = envPath
 		}
@@ -63,16 +70,19 @@ func LoadConfig() *Config {
 	if cfg.ConfigFile != "" {
 		data, err := os.ReadFile(cfg.ConfigFile)
 		if err != nil {
-			println("warning: cannot read config file:", err.Error())
-		} else if err := json.Unmarshal(data, &fc); err != nil {
-			println("warning: cannot parse config file:", err.Error())
+			return nil, fmt.Errorf("read config file %q: %w", cfg.ConfigFile, err)
+		}
+
+		if err := json.Unmarshal(data, &fc); err != nil {
+			return nil, fmt.Errorf("parse config file %q: %w", cfg.ConfigFile, err)
 		}
 	}
+
 	applyFileConfig(cfg, &fc)
 	applyEnvConfig(cfg)
-	applyExplicitFlags(cfg, explicitFlags)
+	applyExplicitFlags(cfg)
 
-	return cfg
+	return cfg, nil
 }
 
 // applyFileConfig применяет значения из json файла конфигурации
@@ -101,6 +111,12 @@ func applyFileConfig(cfg *Config, fc *fileConfig) {
 	if fc.EnableHTTPS != nil {
 		cfg.EnableHTTPS = *fc.EnableHTTPS
 	}
+	if fc.CertFile != "" {
+		cfg.CertFile = fc.CertFile
+	}
+	if fc.KeyFile != "" {
+		cfg.KeyFile = fc.KeyFile
+	}
 }
 
 // applyEnvConfig применяет значения из переменных окружения
@@ -125,41 +141,42 @@ func applyEnvConfig(cfg *Config) {
 			cfg.EnableHTTPS = b
 		}
 	}
-	if val := os.Getenv("CONFIG"); val != "" {
-		cfg.ConfigFile = val
+	if val := os.Getenv("CERT_FILE"); val != "" {
+		cfg.CertFile = val
+	}
+	if val := os.Getenv("KEY_FILE"); val != "" {
+		cfg.KeyFile = val
 	}
 }
 
 // applyExplicitFlags применяет значения явно заданных флагов через cli
-func applyExplicitFlags(cfg *Config, explicit map[string]bool) {
-	if explicit["a"] {
-		cfg.ListenAddress = flag.Lookup("a").Value.String()
+func applyExplicitFlags(cfg *Config) {
+	stringFlags := map[string]*string{
+		"a":          &cfg.ListenAddress,
+		"b":          &cfg.BaseURL,
+		"f":          &cfg.StorageFile,
+		"d":          &cfg.DatabaseDSN,
+		"secret":     &cfg.SecretKey,
+		"audit-file": &cfg.AuditFile,
+		"audit-url":  &cfg.AuditURL,
+		"c":          &cfg.ConfigFile,
+		"cert-file":  &cfg.CertFile,
+		"key-file":   &cfg.KeyFile,
 	}
-	if explicit["b"] {
-		cfg.BaseURL = flag.Lookup("b").Value.String()
+
+	boolFlags := map[string]*bool{
+		"s": &cfg.EnableHTTPS,
 	}
-	if explicit["f"] {
-		cfg.StorageFile = flag.Lookup("f").Value.String()
-	}
-	if explicit["d"] {
-		cfg.DatabaseDSN = flag.Lookup("d").Value.String()
-	}
-	if explicit["secret"] {
-		cfg.SecretKey = flag.Lookup("secret").Value.String()
-	}
-	if explicit["audit-file"] {
-		cfg.AuditFile = flag.Lookup("audit-file").Value.String()
-	}
-	if explicit["audit-url"] {
-		cfg.AuditURL = flag.Lookup("audit-url").Value.String()
-	}
-	if explicit["s"] {
-		cfg.EnableHTTPS, _ = strconv.ParseBool(flag.Lookup("s").Value.String())
-	}
-	if explicit["c"] {
-		cfg.ConfigFile = flag.Lookup("c").Value.String()
-		if cfg.ConfigFile == "" {
-			cfg.ConfigFile = flag.Lookup("config").Value.String()
+
+	flag.Visit(func(f *flag.Flag) {
+		if dst, ok := stringFlags[f.Name]; ok {
+			*dst = f.Value.String()
+			return
 		}
-	}
+
+		if dst, ok := boolFlags[f.Name]; ok {
+			*dst, _ = strconv.ParseBool(f.Value.String())
+			return
+		}
+	})
 }
