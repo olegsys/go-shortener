@@ -126,6 +126,7 @@ func main() {
 	router.Get("/api/user/urls", urlHandler.GetUserURLs)
 	router.Get("/ping", pingHandler.Ping)
 	router.Delete("/api/user/urls", urlHandler.DeleteURLs)
+	router.With(middleware.TrustedSubnetMiddleware(cfg.TrustedSubnet)).Get("/api/internal/stats", urlHandler.Stats)
 	// Endpoints для pprof
 	router.HandleFunc("/debug/pprof/", pprof.Index)
 	router.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)

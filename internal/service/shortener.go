@@ -19,6 +19,7 @@ type URLStore interface {
 	Get(ctx context.Context, shortURL string) (string, bool, bool, error)
 	GetUserURLs(ctx context.Context, userID string) ([]model.URLPair, error)
 	DeleteBatch(ctx context.Context, userID string, ids []string) error
+	Stats(ctx context.Context) (urls int, users int, err error)
 }
 
 // ShortenerService содержит бизнес-логику сервиса сокращения URL
@@ -126,6 +127,15 @@ func (s *ShortenerService) GetUserURLs(ctx context.Context) ([]model.URLPair, er
 // DeleteURLs помечает указанные URL как удаленные
 func (s *ShortenerService) DeleteURLs(ctx context.Context, userID string, ids []string) error {
 	return s.storage.DeleteBatch(ctx, userID, ids)
+}
+
+// Stats возвращает количество сокращённых URL и количество пользователей
+func (s *ShortenerService) Stats(ctx context.Context) (int, int, error) {
+	urls, users, err := s.storage.Stats(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("get stats: %w", err)
+	}
+	return urls, users, nil
 }
 
 func generateID() (string, error) {

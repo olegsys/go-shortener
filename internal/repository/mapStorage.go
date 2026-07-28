@@ -187,3 +187,18 @@ func (m *MapStorage) DeleteBatch(ctx context.Context, userID string, ids []strin
 	}
 	return nil
 }
+
+// Stats возвращает количество сокращённых URL и количество уникальных пользователей
+func (m *MapStorage) Stats(ctx context.Context) (int, int, error) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	urls := len(m.data)
+
+	users := make(map[string]struct{})
+	for _, rec := range m.data {
+		users[rec.UserID] = struct{}{}
+	}
+
+	return urls, len(users), nil
+}

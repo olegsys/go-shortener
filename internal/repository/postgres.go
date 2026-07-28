@@ -199,3 +199,15 @@ func (p *PostgresStorage) DeleteBatch(ctx context.Context, userID string, ids []
 	_, err := p.db.ExecContext(ctx, query, userID, ids)
 	return err
 }
+
+// Stats возвращает количество сокращённых URL и количество уникальных пользователей
+func (p *PostgresStorage) Stats(ctx context.Context) (int, int, error) {
+	var urls, users int
+
+	query := `SELECT COUNT(*), COUNT(DISTINCT user_id) FROM short_urls WHERE is_deleted = false`
+	if err := p.db.QueryRowContext(ctx, query).Scan(&urls, &users); err != nil {
+		return 0, 0, fmt.Errorf("select stats: %w", err)
+	}
+
+	return urls, users, nil
+}
