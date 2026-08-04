@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,13 +15,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	shortenerpb "github.com/olegsys/go-shortener/api/shortener/v1"
 	"github.com/olegsys/go-shortener/internal/audit"
 	"github.com/olegsys/go-shortener/internal/config"
+	"github.com/olegsys/go-shortener/internal/grpcserver"
 	"github.com/olegsys/go-shortener/internal/handler"
 	"github.com/olegsys/go-shortener/internal/middleware"
 	"github.com/olegsys/go-shortener/internal/repository"
 	"github.com/olegsys/go-shortener/internal/service"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/reflection"
 )
 
 // Глобальные переменные для информации о сборке
@@ -111,6 +118,62 @@ func main() {
 		logger.Info("Audit is disabled, using NoopAuditor")
 	}
 
+	var grpcSrv *grpc.Server
+	if cfg.GRPCListenAddress != "" {
+		grpcOpts := []grpc.ServerOption{
+			grpc.ChainUnaryInterceptor(
+				middleware.GRPCLogging(logger),
+				middleware.GRPCAuthInterceptor(cfg.SecretKey),
+			),
+		}
+
+		if cfg.EnableHTTPS {
+			cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+			if err != nil {
+				logger.Panic("failed to load TLS certificate for gRPC",
+					zap.Error(err),
+				)
+			}
+
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				MinVersion:   tls.VersionTLS12,
+			}
+
+			grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+		}
+
+		grpcSrv = grpc.NewServer(grpcOpts...)
+
+		shortenerpb.RegisterShortenerServiceServer(
+			grpcSrv,
+			grpcserver.New(shortenerService, auditor),
+		)
+
+		// Для отладки через grpcurl
+		reflection.Register(grpcSrv)
+
+		go func() {
+			lis, err := net.Listen("tcp", cfg.GRPCListenAddress)
+			if err != nil {
+				logger.Panic("gRPC listen failed",
+					zap.Error(err),
+				)
+			}
+
+			logger.Info("gRPC server startup params",
+				zap.String("listen_on", cfg.GRPCListenAddress),
+				zap.Bool("tls_enabled", cfg.EnableHTTPS),
+			)
+
+			if err := grpcSrv.Serve(lis); err != nil {
+				logger.Panic("gRPC serve failed",
+					zap.Error(err),
+				)
+			}
+		}()
+	}
+
 	urlHandler := handler.NewHandler(shortenerService, deletionSvc, auditor)
 	pingHandler := handler.NewPingHandler(dbStorage)
 	router := chi.NewRouter()
@@ -190,6 +253,12 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Graceful shutdown failed", zap.Error(err))
 		_ = srv.Close()
+	}
+
+	// останавливаем gRPC сервер
+	if grpcSrv != nil {
+		grpcSrv.GracefulStop()
+		logger.Info("gRPC server stopped")
 	}
 
 	// останавливаем фоновый сервис удалений

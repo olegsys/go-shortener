@@ -17,34 +17,52 @@ type ctxKey string
 // UserIDKey используется как ключ в контексте запроса для хранения идентификатора пользователя
 const UserIDKey ctxKey = "userID"
 
-type AuthConfig struct {
-	SecretKey string
+// SignUserID подписывает идентификатор пользователя с помощью HMAC-SHA256
+func SignUserID(secretKey, userID string) string {
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write([]byte(userID))
+	return userID + "|" + hex.EncodeToString(h.Sum(nil))
+}
+
+// ValidateSignedUserID проверяет подписанный токен пользователя
+func ValidateSignedUserID(secretKey, signed string) (string, bool) {
+	parts := strings.SplitN(signed, "|", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+
+	id, sigHex := parts[0], parts[1]
+
+	signature, err := hex.DecodeString(sigHex)
+	if err != nil {
+		return "", false
+	}
+
+	h := hmac.New(sha256.New, []byte(secretKey))
+	h.Write([]byte(id))
+
+	if !hmac.Equal(signature, h.Sum(nil)) {
+		return "", false
+	}
+
+	return id, true
 }
 
 // AuthMiddleware возвращает middleware, который извлекает или создает идентификатор пользователя
 // Идентификатор хранится в cookie и подписывается HMAC-SHA256 для предотвращения компрометации
 func AuthMiddleware(secretKey string, enableHTTPS bool) func(http.Handler) http.Handler {
 	key := []byte(secretKey)
+	_ = key
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var userID string
 			var isNewUser bool
 
 			cookie, err := r.Cookie("user_id")
-
-			// Validate cookie
 			if err == nil {
-				parts := strings.Split(cookie.Value, "|")
-				if len(parts) == 2 {
-					id := parts[0]
-					signature, _ := hex.DecodeString(parts[1])
-
-					h := hmac.New(sha256.New, key)
-					h.Write([]byte(id))
-
-					if hmac.Equal(signature, h.Sum(nil)) {
-						userID = id
-					}
+				if id, ok := ValidateSignedUserID(secretKey, cookie.Value); ok {
+					userID = id
 				}
 			}
 			// New ID if new user or invalid cookie
@@ -54,13 +72,9 @@ func AuthMiddleware(secretKey string, enableHTTPS bool) func(http.Handler) http.
 			}
 			// Set cookie for new user
 			if isNewUser {
-				h := hmac.New(sha256.New, key)
-				h.Write([]byte(userID))
-				signedValue := userID + "|" + hex.EncodeToString(h.Sum(nil))
-
 				http.SetCookie(w, &http.Cookie{
 					Name:     "user_id",
-					Value:    signedValue,
+					Value:    SignUserID(secretKey, userID),
 					Path:     "/",
 					HttpOnly: true,
 					Secure:   enableHTTPS,
