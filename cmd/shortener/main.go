@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"net/http/pprof"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -119,6 +118,8 @@ func main() {
 	}
 
 	var grpcSrv *grpc.Server
+	var grpcLis net.Listener
+
 	if cfg.GRPCListenAddress != "" {
 		grpcOpts := []grpc.ServerOption{
 			grpc.ChainUnaryInterceptor(
@@ -153,25 +154,12 @@ func main() {
 		// Для отладки через grpcurl
 		reflection.Register(grpcSrv)
 
-		go func() {
-			lis, err := net.Listen("tcp", cfg.GRPCListenAddress)
-			if err != nil {
-				logger.Panic("gRPC listen failed",
-					zap.Error(err),
-				)
-			}
-
-			logger.Info("gRPC server startup params",
-				zap.String("listen_on", cfg.GRPCListenAddress),
-				zap.Bool("tls_enabled", cfg.EnableHTTPS),
+		grpcLis, err = net.Listen("tcp", cfg.GRPCListenAddress)
+		if err != nil {
+			logger.Panic("gRPC listen failed",
+				zap.Error(err),
 			)
-
-			if err := grpcSrv.Serve(lis); err != nil {
-				logger.Panic("gRPC serve failed",
-					zap.Error(err),
-				)
-			}
-		}()
+		}
 	}
 
 	urlHandler := handler.NewHandler(shortenerService, deletionSvc, auditor)
@@ -203,6 +191,33 @@ func main() {
 		Addr:    cfg.ListenAddress,
 		Handler: router,
 	}
+
+	httpLis, err := net.Listen("tcp", cfg.ListenAddress)
+	if err != nil {
+		if grpcLis != nil {
+			_ = grpcLis.Close()
+		}
+
+		logger.Panic("HTTP listen failed",
+			zap.Error(err),
+		)
+	}
+
+	if grpcSrv != nil {
+		go func() {
+			logger.Info("gRPC server startup params",
+				zap.String("listen_on", cfg.GRPCListenAddress),
+				zap.Bool("tls_enabled", cfg.EnableHTTPS),
+			)
+
+			if err := grpcSrv.Serve(grpcLis); err != nil {
+				logger.Panic("gRPC serve failed",
+					zap.Error(err),
+				)
+			}
+		}()
+	}
+
 	go func() {
 		logger.Info("Server startup params",
 			zap.String("Listen on:", cfg.ListenAddress),
@@ -229,9 +244,9 @@ func main() {
 				)
 			}
 
-			err = srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
+			err = srv.ServeTLS(httpLis, cfg.CertFile, cfg.KeyFile)
 		} else {
-			err = srv.ListenAndServe()
+			err = srv.Serve(httpLis)
 		}
 
 		if err != nil && err != http.ErrServerClosed {

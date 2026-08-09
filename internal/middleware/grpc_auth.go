@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -16,9 +15,8 @@ import (
 // GRPCAuthInterceptor извлекает пользователя из metadata-заголовка authorization.
 // Ожидаемый формат:
 // authorization: Bearer userID|signature
-// Если заголовок отсутствует, interceptor создаёт нового пользователя и
-// возвращает подписанный токен в response metadata:
-// authorization: Bearer userID|signature
+// Если заголовок отсутствует или невалиден, пользователь считается
+// неаутентифицированным, и userID в контекст не записывается
 func GRPCAuthInterceptor(secretKey string) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -39,28 +37,26 @@ func GRPCAuthInterceptor(secretKey string) grpc.UnaryServerInterceptor {
 				}
 
 				if token != "" {
-					if id, ok := ValidateSignedUserID(secretKey, token); ok {
-						userID = id
-					} else {
+					id, ok := ValidateSignedUserID(secretKey, token)
+					if !ok {
 						return nil, status.Error(
 							codes.Unauthenticated,
 							"invalid authorization metadata",
 						)
 					}
+
+					userID = id
 				}
 			}
 		}
 
-		if userID == "" {
-			userID = uuid.New().String()
+		if userID != "" {
+			signedToken := SignUserID(secretKey, userID)
+			_ = grpc.SetHeader(
+				ctx,
+				metadata.Pairs("authorization", "Bearer "+signedToken),
+			)
 		}
-
-		signedToken := SignUserID(secretKey, userID)
-
-		_ = grpc.SetHeader(
-			ctx,
-			metadata.Pairs("authorization", "Bearer "+signedToken),
-		)
 
 		ctx = context.WithValue(ctx, UserIDKey, userID)
 
