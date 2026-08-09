@@ -21,6 +21,7 @@ type Shortener interface {
 	Resolve(ctx context.Context, shortURL string) (string, bool, bool, error)
 	GetUserURLs(ctx context.Context) ([]model.URLPair, error)
 	DeleteURLs(ctx context.Context, userID string, ids []string) error
+	Stats(ctx context.Context) (int, int, error)
 }
 type deletionService interface {
 	Enqueue(userID, shortID string) error
@@ -256,4 +257,27 @@ func (h *Handler) DeleteURLs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// statsResponse описывает ответ эндпоинта статистики
+type statsResponse struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
+}
+
+// Stats обрабатывает GET-запросы на "/api/internal/stats"
+// Возвращает количество сокращённых URL и пользователей в сервисе
+func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
+	urls, users, err := h.shortener.Stats(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(statsResponse{URLs: urls, Users: users}); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 }

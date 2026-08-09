@@ -11,31 +11,35 @@ import (
 
 // Config содержит все конфигурационные параметры приложения, загружаемые из флагов и переменных окружения
 type Config struct {
-	ListenAddress string
-	BaseURL       string
-	StorageFile   string
-	DatabaseDSN   string
-	SecretKey     string
-	AuditFile     string
-	AuditURL      string
-	EnableHTTPS   bool
-	ConfigFile    string
-	CertFile      string
-	KeyFile       string
+	ListenAddress     string
+	BaseURL           string
+	StorageFile       string
+	DatabaseDSN       string
+	SecretKey         string
+	AuditFile         string
+	AuditURL          string
+	EnableHTTPS       bool
+	ConfigFile        string
+	CertFile          string
+	KeyFile           string
+	TrustedSubnet     string
+	GRPCListenAddress string
 }
 
 // fileConfig описывает структуру json файла конфигурации.
 type fileConfig struct {
-	Address     string `json:"address"`
-	BaseURL     string `json:"base_url"`
-	StoreFile   string `json:"store_file"`
-	DatabaseDSN string `json:"database_dsn"`
-	SecretKey   string `json:"secret_key"`
-	AuditFile   string `json:"audit_file"`
-	AuditURL    string `json:"audit_url"`
-	EnableHTTPS *bool  `json:"enable_https"`
-	CertFile    string `json:"cert_file"`
-	KeyFile     string `json:"key_file"`
+	Address       string `json:"address"`
+	BaseURL       string `json:"base_url"`
+	StoreFile     string `json:"store_file"`
+	DatabaseDSN   string `json:"database_dsn"`
+	SecretKey     string `json:"secret_key"`
+	AuditFile     string `json:"audit_file"`
+	AuditURL      string `json:"audit_url"`
+	EnableHTTPS   *bool  `json:"enable_https"`
+	CertFile      string `json:"cert_file"`
+	KeyFile       string `json:"key_file"`
+	TrustedSubnet string `json:"trusted_subnet"`
+	GRPCAddress   string `json:"grpc_address"`
 }
 
 // LoadConfig загружает конфигурацию. Приоритет имеют переменные окружения, затем флаги командной строки, затем json файл
@@ -52,6 +56,8 @@ func LoadConfig() (*Config, error) {
 	flag.StringVar(&cfg.ConfigFile, "c", "", "path to config file")
 	flag.StringVar(&cfg.CertFile, "cert-file", "cert.pem", "path to TLS certificate file")
 	flag.StringVar(&cfg.KeyFile, "key-file", "key.pem", "path to TLS private key file")
+	flag.StringVar(&cfg.TrustedSubnet, "t", "", "trusted subnet in CIDR notation")
+	flag.StringVar(&cfg.GRPCListenAddress, "grpc-a", "", "gRPC listen address")
 	flag.Parse()
 
 	var configFlagSet bool
@@ -117,6 +123,12 @@ func applyFileConfig(cfg *Config, fc *fileConfig) {
 	if fc.KeyFile != "" {
 		cfg.KeyFile = fc.KeyFile
 	}
+	if fc.TrustedSubnet != "" {
+		cfg.TrustedSubnet = fc.TrustedSubnet
+	}
+	if fc.GRPCAddress != "" {
+		cfg.GRPCListenAddress = fc.GRPCAddress
+	}
 }
 
 // applyEnvConfig применяет значения из переменных окружения
@@ -147,6 +159,12 @@ func applyEnvConfig(cfg *Config) {
 	if val := os.Getenv("KEY_FILE"); val != "" {
 		cfg.KeyFile = val
 	}
+	if val := os.Getenv("TRUSTED_SUBNET"); val != "" {
+		cfg.TrustedSubnet = val
+	}
+	if val := os.Getenv("GRPC_ADDRESS"); val != "" {
+		cfg.GRPCListenAddress = val
+	}
 }
 
 // applyExplicitFlags применяет значения явно заданных флагов через cli
@@ -162,6 +180,8 @@ func applyExplicitFlags(cfg *Config) {
 		"c":          &cfg.ConfigFile,
 		"cert-file":  &cfg.CertFile,
 		"key-file":   &cfg.KeyFile,
+		"t":          &cfg.TrustedSubnet,
+		"grpc-a":     &cfg.GRPCListenAddress,
 	}
 
 	boolFlags := map[string]*bool{
